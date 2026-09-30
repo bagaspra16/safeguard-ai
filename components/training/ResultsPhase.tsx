@@ -44,8 +44,8 @@ export function ResultsPhase({ scenario }: Props) {
   const quizTotalCount = Math.max(1, quizAnswers.length)
   const quizScore = Math.round((quizCorrectCount / quizTotalCount) * 100)
 
-  // Overall weighted composite score: 35% Hazard Detection, 35% 3D Decision, 30% Quiz
-  const overallScore = Math.round(hazardScore * 0.35 + decisionScore * 0.35 + quizScore * 0.3)
+  // Overall weighted composite score: 30% Hazard Detection, 40% In-Video Decisions, 30% Quiz
+  const overallScore = Math.round(hazardScore * 0.3 + decisionScore * 0.4 + quizScore * 0.3)
   const passed = overallScore >= scenario.assessment.passingScore
 
   // Format time
@@ -206,13 +206,13 @@ export function ResultsPhase({ scenario }: Props) {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--sg-text-secondary)', fontSize: 13, marginBottom: 8 }}>
-            <ShieldCheck size={16} color={decisionCorrect ? '#10b981' : '#ef4444'} /> 3D Intersection Action
+            <ShieldCheck size={16} color={decisionCorrect ? '#10b981' : '#ef4444'} /> In-Video Decision
           </div>
           <div style={{ fontSize: 22, fontWeight: 800, color: decisionCorrect ? '#10b981' : '#ef4444' }}>
-            {decisionCorrect ? 'Compliant' : 'Violation'}
+            {decisionCorrect ? 'Compliant' : 'Needs Review'}
           </div>
           <div style={{ fontSize: 12, color: 'var(--sg-text-secondary)', marginTop: 4 }}>
-            {decisionCorrect ? 'Stopped at blind corner' : 'Walked into vehicle path'}
+            {decisionCorrect ? 'Correct decision at critical moment' : 'Decision required further review'}
           </div>
         </div>
 

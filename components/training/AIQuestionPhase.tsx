@@ -78,7 +78,7 @@ export function AIQuestionPhase({ scenario, onContinue }: Props) {
         <h2 style={{ fontSize: 22, fontWeight: 800 }}>AI Safety Instructor</h2>
       </div>
       <p style={{ color: 'var(--sg-text-secondary)', fontSize: 14, marginBottom: 32 }}>
-        Your AI trainer is reviewing the incident with you before entering the simulation.
+        Your AI trainer is reviewing the incident with you. Answer the question below, then watch how the situation should have been handled.
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 24 }}>
@@ -169,7 +169,7 @@ export function AIQuestionPhase({ scenario, onContinue }: Props) {
                 onClick={onContinue}
                 style={{ gap: 8 }}
               >
-                Enter 3D Simulation <ChevronRight size={14} />
+                Watch Correct Procedure <ChevronRight size={14} />
               </button>
             )}
           </div>
