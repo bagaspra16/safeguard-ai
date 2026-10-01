@@ -33,7 +33,7 @@ export async function POST(req: Request) {
 
     if (!isMock && process.env.GROQ_API_KEY) {
       try {
-        const prompt = `You are a certified senior workplace safety auditor and enterprise EHS instructor for SafeGuard AI. 
+        const prompt = `You are a certified senior workplace safety auditor and enterprise EHS instructor for ClumsAI. 
 Provide a concise, highly professional 2-3 paragraph performance debrief for an employee who just completed the following safety simulation:
 
 SCENARIO DETAILS:

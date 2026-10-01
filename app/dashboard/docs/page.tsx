@@ -52,7 +52,7 @@ export default function DocsPage() {
             </div>
 
             <p className="text-sm text-zinc-300 leading-relaxed mb-6">
-              SafeGuard AI provides high-fidelity first-person workplace training simulations. In the 3D canvas, controls adapt seamlessly between desktop keyboard/mouse and immersive VR headsets with 6-degrees-of-freedom tracking.
+              ClumsAI provides high-fidelity first-person workplace training simulations. In the 3D canvas, controls adapt seamlessly between desktop keyboard/mouse and immersive VR headsets with 6-degrees-of-freedom tracking.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

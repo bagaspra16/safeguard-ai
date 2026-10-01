@@ -1,0 +1,22 @@
+<svg width="800" height="240" viewBox="0 0 800 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="hat-grad" x1="60" y1="35" x2="160" y2="140" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#fb923c" />
+      <stop offset="100%" stopColor="#ea580c" />
+    </linearGradient>
+  </defs>
+  <!-- Hard Hat Mark -->
+  <g transform="translate(50, 40)">
+    <!-- Hat Dome -->
+    <path d="M25 90 C25 35 55 15 90 15 C125 15 155 35 155 90 Z" fill="url(#hat-grad)"/>
+    <!-- Hat Top Center Rib -->
+    <path d="M78 16 C82 15 98 15 102 16 L108 90 L72 90 Z" fill="#c2410c" opacity="0.85"/>
+    <!-- Hat Brim Band -->
+    <rect x="15" y="86" width="150" height="15" rx="4" fill="#0f172a"/>
+    <!-- Hat Visor Lip -->
+    <rect x="5" y="98" width="170" height="11" rx="5.5" fill="#f97316"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="270" y="132" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="105" font-weight="900" fill="#0f172a" letter-spacing="-3">Clums<tspan fill="#f97316">AI</tspan></text>
+</svg>

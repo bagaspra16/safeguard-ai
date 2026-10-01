@@ -42,7 +42,7 @@ function buildSystemPrompt(context: ChatContext): string {
   const hazardList = scenario.hazards.map((h) => `- ${h.label}: ${h.description}`).join('\n')
   const objectives = scenario.learningObjectives.join('\n- ')
 
-  return `You are a certified workplace safety training instructor for SafeGuard AI. You are currently conducting a high-fidelity interactive training session for the following scenario:
+  return `You are a certified workplace safety training instructor for ClumsAI. You are currently conducting a high-fidelity interactive training session for the following scenario:
 
 SCENARIO TITLE: ${scenario.title}
 CATEGORY: ${scenario.category}

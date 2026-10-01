@@ -1,13 +1,10 @@
 import { useRef, useState, type ReactNode, type RefObject } from 'react'
 import { useFrame, type ThreeElements } from '@react-three/fiber'
-import { Html } from '@react-three/drei'
 import * as THREE from 'three'
 import { BRAND, SCENARIOS, clamp01, smooth, type SimClock } from '../timeline'
 import { Boxes, Tubes, type BoxItem, type Segment } from '../parts/Instances'
 import { Worker, type WorkerPose } from '../parts/Worker'
-import { DetectionBox } from '../parts/DetectionBox'
 import { applyStageView } from '../parts/stageView'
-import styles from '../simulator.module.css'
 
 const META = SCENARIOS[0]
 
@@ -265,16 +262,7 @@ export function FallHazard({ clockRef }: { clockRef: RefObject<SimClock> }) {
           <cylinderGeometry args={[0.015, 0.015, 4, 6]} />
         </ZonePart>
       </group>
-      {stage >= 1 && (
-        <Html position={[END_X + 0.14, 2, Z_OUT]} center zIndexRange={[12, 0]} style={{ pointerEvents: 'none' }}>
-          <div className={styles.measure}>4.0 m</div>
-        </Html>
-      )}
-
-      <Worker clockRef={clockRef} pose={deckWorkerPose}>
-        {stage === 2 && <DetectionBox label="FALL RISK" detail="No guardrail · 4.0 m drop" />}
-        {stage === 3 && <DetectionBox label="ALERT SENT" detail="Worker moving to safe zone" />}
-      </Worker>
+      <Worker clockRef={clockRef} pose={deckWorkerPose} />
       <Worker clockRef={clockRef} pose={groundWorkerPose} />
     </group>
   )

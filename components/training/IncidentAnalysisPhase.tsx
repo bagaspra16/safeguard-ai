@@ -17,12 +17,9 @@ import {
   CheckCircle2,
   XCircle,
   FileText,
-  Eye,
-  Info,
   Maximize2,
   RefreshCw,
-  Layers,
-  ChevronRight,
+  Shield,
 } from 'lucide-react'
 
 interface Props {
@@ -59,12 +56,12 @@ const INCIDENT_DETAILS_MAP: Record<string, IncidentDetail> = {
       'Facility downtime and required OSHA incident reporting investigation.',
     ],
     correctActions: [
-      'Pedestrian must pause at intersection marking and look both directions (Stop & Look).',
+      'Pedestrian must pause at intersection marking and look both directions (Stop and Look).',
       'Forklift operator must sound horn 5 meters before blind corners and slow down.',
       'Forklift must carry loads low (10-15 cm from floor) or drive in reverse if sight is blocked.',
     ],
     initialGreeting:
-      'Welcome to Incident Case Study #OSHA-2026-WHS-0482. In this real-world scenario, a warehouse worker bypassed the Stop-and-Look protocol at an unmirrored blind corner while a forklift was rounding the aisle with an obstructed forward view.\n\nI am your Sentinel AI Safety Advisor. Ask me anything about the root causes, OSHA 1910.178 requirements, or pedestrian-vehicle separation protocols before you begin your assessment.',
+      'Welcome to Incident Case Study OSHA-2026-WHS-0482. In this real-world scenario, a warehouse worker bypassed the Stop-and-Look protocol at an unmirrored blind corner while a forklift was rounding the aisle with an obstructed forward view.\n\nI am your Sentinel AI Safety Advisor. Ask me anything about the root causes, OSHA 1910.178 requirements, or pedestrian-vehicle separation protocols before you begin your assessment.',
     suggestedQuestions: [
       'Why was the pedestrian in the danger zone?',
       'What are the OSHA requirements for forklift blind corners?',
@@ -96,10 +93,10 @@ const INCIDENT_DETAILS_MAP: Record<string, IncidentDetail> = {
     correctActions: [
       'Never use water on Class B flammable liquid or electrical fires.',
       'Execute RACE protocol: Rescue, Alarm (pull station), Contain (fire doors), Evacuate.',
-      'Deploy only Class B rated CO₂ or ABC dry chemical extinguishers using PASS technique.',
+      'Deploy only Class B rated CO2 or ABC dry chemical extinguishers using PASS technique.',
     ],
     initialGreeting:
-      'Welcome to Incident Case Study #OSHA-2026-IND-0914. This critical incident illustrates the catastrophic danger of applying water to a Class B solvent fire. The water instantaneously boiled into steam, violently spreading flaming liquid across the warehouse bay.\n\nI am your Sentinel AI Safety Advisor. Ask me about Class B fire dynamics, the RACE protocol, or appropriate extinguishing agents for industrial environments.',
+      'Welcome to Incident Case Study OSHA-2026-IND-0914. This critical incident illustrates the catastrophic danger of applying water to a Class B solvent fire. The water instantaneously boiled into steam, violently spreading flaming liquid across the warehouse bay.\n\nI am your Sentinel AI Safety Advisor. Ask me about Class B fire dynamics, the RACE protocol, or appropriate extinguishing agents for industrial environments.',
     suggestedQuestions: [
       'Why does water cause an explosion on solvent fires?',
       'What extinguisher type is required for Class B fires?',
@@ -134,7 +131,7 @@ const INCIDENT_DETAILS_MAP: Record<string, IncidentDetail> = {
       'Immediately exercise Stop Work Authority when observing coworker unclipped.',
     ],
     initialGreeting:
-      'Welcome to Incident Case Study #OSHA-2026-CST-1102. In this high-elevation incident, a worker disconnected both lanyard snap hooks to quickly step across an unpinned scaffold plank 8 meters above ground level, resulting in an unarrested tipping fall.\n\nI am your Sentinel AI Safety Advisor. Ask me about 100% continuous tie-off, OSHA 1926 fall clearance calculations, or scaffold inspection criteria.',
+      'Welcome to Incident Case Study OSHA-2026-CST-1102. In this high-elevation incident, a worker disconnected both lanyard snap hooks to quickly step across an unpinned scaffold plank 8 meters above ground level, resulting in an unarrested tipping fall.\n\nI am your Sentinel AI Safety Advisor. Ask me about 100% continuous tie-off, OSHA 1926 fall clearance calculations, or scaffold inspection criteria.',
     suggestedQuestions: [
       'How does the dual-lanyard leapfrog technique work?',
       'What is the minimum OSHA fall protection trigger height?',
@@ -151,15 +148,6 @@ const INCIDENT_DETAILS_MAP: Record<string, IncidentDetail> = {
 }
 
 export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'causes' | 'osha' | 'controls'>('overview')
-  const [chatMessages, setChatMessages] = useState<
-    { role: 'assistant' | 'user'; content: string; timestamp: string }[]
-  >([])
-  const [inputMessage, setInputMessage] = useState('')
-  const [isTyping, setIsTyping] = useState(false)
-  const [isImageZoomed, setIsImageZoomed] = useState(false)
-  const chatBottomRef = useRef<HTMLDivElement>(null)
-
   // Resolve incident details
   const isFire =
     scenario.id === 'industrial-fire-005' || scenario.category === 'fire_safety'
@@ -176,16 +164,20 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
 
   const incident = INCIDENT_DETAILS_MAP[incidentKey] || INCIDENT_DETAILS_MAP['forklift-blind-corner-001']
 
-  // Initial greeting message
-  useEffect(() => {
-    setChatMessages([
-      {
-        role: 'assistant',
-        content: incident.initialGreeting,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      },
-    ])
-  }, [incident])
+  const [activeTab, setActiveTab] = useState<'overview' | 'causes' | 'osha' | 'controls'>('overview')
+  const [chatMessages, setChatMessages] = useState<
+    { role: 'assistant' | 'user'; content: string; timestamp: string }[]
+  >(() => [
+    {
+      role: 'assistant',
+      content: incident.initialGreeting,
+      timestamp: 'Just now',
+    },
+  ])
+  const [inputMessage, setInputMessage] = useState('')
+  const [isTyping, setIsTyping] = useState(false)
+  const [isImageZoomed, setIsImageZoomed] = useState(false)
+  const chatBottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -228,7 +220,6 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
         throw new Error('Chat API returned error')
       }
     } catch {
-      // Fallback response tailored to scenario
       let fallbackText = ''
       const lower = text.toLowerCase()
       if (isFire) {
@@ -271,8 +262,8 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        background: '#0a0d14',
-        color: '#f1f5f9',
+        background: '#ffffff',
+        color: '#0f172a',
         overflow: 'hidden',
         position: 'relative',
       }}
@@ -281,8 +272,8 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
       <div
         style={{
           flexShrink: 0,
-          background: '#0f1422',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          background: '#ffffff',
+          borderBottom: '1px solid #eef2f6',
           padding: '12px 24px',
           display: 'flex',
           alignItems: 'center',
@@ -293,62 +284,61 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div
             style={{
-              width: 38,
-              height: 38,
+              width: 36,
+              height: 36,
               borderRadius: 10,
-              background: 'rgba(239,68,68,0.15)',
-              border: '1px solid rgba(239,68,68,0.3)',
+              background: 'rgba(249,115,22,0.1)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#ef4444',
+              color: '#ea580c',
             }}
           >
-            {isFire ? <Flame size={20} /> : isFall ? <HardHat size={20} /> : <Truck size={20} />}
+            {isFire ? <Flame size={18} /> : isFall ? <HardHat size={18} /> : <Truck size={18} />}
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span
                 style={{
                   fontSize: 10,
-                  fontWeight: 800,
-                  letterSpacing: '0.08em',
+                  fontWeight: 700,
+                  letterSpacing: '0.06em',
                   textTransform: 'uppercase',
-                  background: 'rgba(239,68,68,0.2)',
-                  color: '#f87171',
+                  background: '#f8fafc',
+                  color: '#64748b',
                   padding: '2px 8px',
-                  borderRadius: 4,
-                  border: '1px solid rgba(239,68,68,0.35)',
+                  borderRadius: 999,
+                  border: '1px solid #e2e8f0',
                 }}
               >
-                Phase 1: Incident Analysis
+                Stage 1: Case Review
               </span>
-              <span style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'monospace' }}>
+              <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>
                 {incident.caseNumber}
               </span>
             </div>
-            <h1 style={{ fontSize: 16, fontWeight: 700, color: '#ffffff', margin: '2px 0 0' }}>
-              {scenario.title} — Unsafe Procedure Breakdown
+            <h1 style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', margin: '2px 0 0' }}>
+              {scenario.title}: Incident Breakdown
             </h1>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              background: 'rgba(255,255,255,0.05)',
+              background: '#f8fafc',
               padding: '6px 12px',
-              borderRadius: 8,
-              border: '1px solid rgba(255,255,255,0.08)',
-              fontSize: 12,
-              color: '#94a3b8',
+              borderRadius: 999,
+              border: '1px solid #e2e8f0',
+              fontSize: 11,
+              color: '#64748b',
             }}
           >
-            <ShieldAlert size={14} color="#f97316" />
-            <span>Standard: <strong style={{ color: '#f8fafc' }}>{incident.oshaStandard}</strong></span>
+            <Shield size={13} color="#ea580c" />
+            <span>Standard: <strong style={{ color: '#0f172a' }}>{incident.oshaStandard}</strong></span>
           </div>
 
           <button
@@ -366,11 +356,12 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              boxShadow: '0 4px 14px rgba(249,115,22,0.35)',
-              transition: 'all 0.2s',
+              boxShadow: '0 4px 12px rgba(249,115,22,0.25)',
+              transition: 'all 0.15s ease',
             }}
           >
-            Start Assessment <ArrowRight size={15} />
+            <span>Begin Assessment</span>
+            <ArrowRight size={14} />
           </button>
         </div>
       </div>
@@ -380,7 +371,7 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
         style={{
           flex: 1,
           display: 'grid',
-          gridTemplateColumns: '1.15fr 0.85fr',
+          gridTemplateColumns: '1.1fr 0.9fr',
           minHeight: 0,
           overflow: 'hidden',
         }}
@@ -390,10 +381,11 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
           style={{
             overflowY: 'auto',
             padding: '20px 24px',
-            borderRight: '1px solid rgba(255,255,255,0.08)',
+            borderRight: '1px solid #eef2f6',
             display: 'flex',
             flexDirection: 'column',
-            gap: 20,
+            gap: 18,
+            background: '#ffffff',
           }}
         >
           {/* Incident Image Card */}
@@ -402,16 +394,16 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
               position: 'relative',
               borderRadius: 16,
               overflow: 'hidden',
-              border: '1px solid rgba(255,255,255,0.12)',
-              background: '#131826',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              border: '1px solid #e2e8f0',
+              background: '#ffffff',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.02)',
             }}
           >
             <div
               style={{
                 position: 'relative',
                 width: '100%',
-                height: 320,
+                height: 300,
                 cursor: 'pointer',
               }}
               onClick={() => setIsImageZoomed(true)}
@@ -424,17 +416,15 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
                 priority
               />
 
-              {/* Gradient Overlay for labels */}
               <div
                 style={{
                   position: 'absolute',
                   inset: 0,
                   background:
-                    'linear-gradient(to top, rgba(10,13,20,0.92) 0%, rgba(10,13,20,0.2) 60%, rgba(0,0,0,0.4) 100%)',
+                    'linear-gradient(to top, rgba(15,23,42,0.9) 0%, rgba(15,23,42,0.1) 50%, rgba(0,0,0,0.3) 100%)',
                 }}
               />
 
-              {/* Top Banner Tag */}
               <div
                 style={{
                   position: 'absolute',
@@ -443,19 +433,18 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
-                  background: 'rgba(220,38,38,0.9)',
+                  background: 'rgba(15,23,42,0.85)',
                   backdropFilter: 'blur(8px)',
                   color: '#ffffff',
-                  fontSize: 11,
-                  fontWeight: 800,
+                  fontSize: 10,
+                  fontWeight: 700,
                   padding: '4px 10px',
-                  borderRadius: 6,
-                  letterSpacing: '0.05em',
+                  borderRadius: 999,
                   textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
                 }}
               >
-                <AlertTriangle size={13} />
-                Critical Incident Case Evidence
+                <span>Incident Reference Evidence</span>
               </div>
 
               <div
@@ -466,29 +455,30 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
-                  background: 'rgba(15,23,42,0.75)',
+                  background: 'rgba(255,255,255,0.95)',
                   backdropFilter: 'blur(8px)',
-                  color: '#94a3b8',
+                  color: '#0f172a',
                   fontSize: 11,
+                  fontWeight: 600,
                   padding: '4px 10px',
-                  borderRadius: 6,
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 999,
+                  border: '1px solid rgba(0,0,0,0.06)',
                 }}
               >
-                <Maximize2 size={12} /> Click to expand
+                <Maximize2 size={12} />
+                <span>Expand View</span>
               </div>
 
-              {/* Bottom Caption */}
               <div
                 style={{
                   position: 'absolute',
-                  bottom: 12,
+                  bottom: 14,
                   left: 16,
                   right: 16,
                 }}
               >
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>
-                  Failure Mechanism
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#fed7aa', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>
+                  Incident Observation
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', lineHeight: 1.4 }}>
                   {scenario.negativeCase.description}
@@ -496,15 +486,15 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
               </div>
             </div>
 
-            {/* Incident Hazard Badges Strip */}
+            {/* Hazard Tags Strip */}
             <div
               style={{
-                background: '#0d111a',
-                padding: '10px 16px',
-                borderTop: '1px solid rgba(255,255,255,0.06)',
+                background: '#f8fafc',
+                padding: '10px 14px',
+                borderTop: '1px solid #edf2f7',
                 display: 'flex',
                 flexWrap: 'wrap',
-                gap: 8,
+                gap: 6,
               }}
             >
               {incident.hazardTags.map((tag, idx) => (
@@ -515,43 +505,11 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
                     fontWeight: 600,
                     padding: '3px 9px',
                     borderRadius: 999,
-                    background:
-                      tag.severity === 'critical'
-                        ? 'rgba(239,68,68,0.15)'
-                        : tag.severity === 'high'
-                        ? 'rgba(249,115,22,0.15)'
-                        : 'rgba(234,179,8,0.15)',
-                    color:
-                      tag.severity === 'critical'
-                        ? '#fca5a5'
-                        : tag.severity === 'high'
-                        ? '#fdba74'
-                        : '#fde047',
-                    border: `1px solid ${
-                      tag.severity === 'critical'
-                        ? 'rgba(239,68,68,0.3)'
-                        : tag.severity === 'high'
-                        ? 'rgba(249,115,22,0.3)'
-                        : 'rgba(234,179,8,0.3)'
-                    }`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 5,
+                    background: '#ffffff',
+                    color: '#334155',
+                    border: '1px solid #e2e8f0',
                   }}
                 >
-                  <span
-                    style={{
-                      width: 5,
-                      height: 5,
-                      borderRadius: '50%',
-                      background:
-                        tag.severity === 'critical'
-                          ? '#ef4444'
-                          : tag.severity === 'high'
-                          ? '#f97316'
-                          : '#eab308',
-                    }}
-                  />
                   {tag.label}
                 </span>
               ))}
@@ -563,41 +521,45 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
             <div
               style={{
                 display: 'flex',
-                gap: 6,
-                borderBottom: '1px solid rgba(255,255,255,0.1)',
-                paddingBottom: 8,
-                marginBottom: 16,
+                gap: 4,
+                background: '#f1f5f9',
+                padding: 3,
+                borderRadius: 10,
+                marginBottom: 14,
+                border: '1px solid #e2e8f0',
               }}
             >
               {[
-                { key: 'overview', label: 'Case Overview', icon: FileText },
+                { key: 'overview', label: 'Summary', icon: FileText },
                 { key: 'causes', label: 'Root Causes', icon: AlertTriangle },
-                { key: 'osha', label: 'OSHA Violations', icon: ShieldAlert },
-                { key: 'controls', label: 'Corrective Protocol', icon: CheckCircle2 },
+                { key: 'osha', label: 'Regulations', icon: ShieldAlert },
+                { key: 'controls', label: 'Action Protocol', icon: CheckCircle2 },
               ].map((tab) => {
                 const Icon = tab.icon
                 const isActive = activeTab === tab.key
                 return (
                   <button
                     key={tab.key}
-                    onClick={() => setActiveTab(tab.key as any)}
+                    onClick={() => setActiveTab(tab.key as 'overview' | 'causes' | 'osha' | 'controls')}
                     style={{
-                      padding: '6px 14px',
+                      flex: 1,
+                      padding: '6px 8px',
                       borderRadius: 8,
-                      background: isActive ? 'rgba(249,115,22,0.18)' : 'transparent',
-                      color: isActive ? '#f97316' : '#94a3b8',
-                      border: isActive ? '1px solid rgba(249,115,22,0.4)' : '1px solid transparent',
+                      background: isActive ? '#ffffff' : 'transparent',
+                      color: isActive ? '#0f172a' : '#64748b',
+                      border: 'none',
+                      boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.04)' : 'none',
                       fontSize: 12,
                       fontWeight: isActive ? 700 : 500,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
+                      justifyContent: 'center',
                       gap: 6,
-                      transition: 'all 0.15s',
                     }}
                   >
-                    <Icon size={14} />
-                    {tab.label}
+                    <Icon size={13} color={isActive ? '#ea580c' : '#94a3b8'} />
+                    <span>{tab.label}</span>
                   </button>
                 )
               })}
@@ -606,19 +568,19 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
             {/* Tab Contents */}
             <div
               style={{
-                background: '#0f1422',
+                background: '#ffffff',
                 borderRadius: 14,
-                border: '1px solid rgba(255,255,255,0.08)',
-                padding: '18px 20px',
+                border: '1px solid #eef2f6',
+                padding: '16px 18px',
               }}
             >
               {activeTab === 'overview' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div>
-                    <h3 style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc', marginBottom: 6 }}>
-                      Incident Summary & Context
+                    <h3 style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>
+                      Incident Overview
                     </h3>
-                    <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6, margin: 0 }}>
+                    <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, margin: 0 }}>
                       {scenario.description}
                     </p>
                   </div>
@@ -627,68 +589,41 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
                     style={{
                       display: 'grid',
                       gridTemplateColumns: 'repeat(3, 1fr)',
-                      gap: 10,
-                      padding: '12px',
-                      background: 'rgba(255,255,255,0.03)',
+                      gap: 8,
+                      padding: '10px 12px',
+                      background: '#f8fafc',
                       borderRadius: 10,
-                      border: '1px solid rgba(255,255,255,0.06)',
+                      border: '1px solid #edf2f7',
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Severity Class</div>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: '#ef4444', textTransform: 'uppercase' }}>
-                        {scenario.severity} Risk
+                      <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>Severity</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'capitalize' }}>
+                        {scenario.severity}
                       </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Environment</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc', textTransform: 'capitalize' }}>
+                      <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>Domain</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'capitalize' }}>
                         {scenario.environment}
                       </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Drill Duration</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>
-                        ~{scenario.estimatedDuration} min
+                      <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>Duration</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
+                        {scenario.estimatedDuration} min
                       </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 style={{ fontSize: 12, fontWeight: 700, color: '#fca5a5', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <XCircle size={14} /> Critical Error Sequence:
-                    </h4>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {scenario.negativeCase.actions.map((act, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 8,
-                            fontSize: 12,
-                            color: '#cbd5e1',
-                            background: 'rgba(239,68,68,0.08)',
-                            padding: '6px 12px',
-                            borderRadius: 6,
-                            borderLeft: '3px solid #ef4444',
-                          }}
-                        >
-                          <span style={{ fontWeight: 700, color: '#ef4444' }}>Step {i + 1}:</span>
-                          <span>{act.replace(/_/g, ' ')}</span>
-                        </div>
-                      ))}
                     </div>
                   </div>
                 </div>
               )}
 
               {activeTab === 'causes' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <h3 style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc', margin: 0 }}>
-                    Identified Root Causes & Failure Chain
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <h3 style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: 0 }}>
+                    Identified Root Causes
                   </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {incident.rootCauses.map((cause, idx) => (
                       <div
                         key={idx}
@@ -696,92 +631,52 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
                           display: 'flex',
                           alignItems: 'flex-start',
                           gap: 10,
-                          fontSize: 13,
-                          color: '#cbd5e1',
+                          fontSize: 12,
+                          color: '#334155',
                           lineHeight: 1.5,
+                          padding: '8px 10px',
+                          background: '#f8fafc',
+                          borderRadius: 8,
+                          border: '1px solid #edf2f7',
                         }}
                       >
-                        <div
-                          style={{
-                            width: 20,
-                            height: 20,
-                            borderRadius: '50%',
-                            background: 'rgba(239,68,68,0.2)',
-                            color: '#f87171',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 11,
-                            fontWeight: 800,
-                            flexShrink: 0,
-                            marginTop: 2,
-                          }}
-                        >
-                          {idx + 1}
-                        </div>
-                        <div>{cause}</div>
+                        <span style={{ fontWeight: 700, color: '#ea580c' }}>{idx + 1}.</span>
+                        <span>{cause}</span>
                       </div>
                     ))}
-                  </div>
-
-                  <div
-                    style={{
-                      marginTop: 10,
-                      padding: '12px 14px',
-                      borderRadius: 10,
-                      background: 'rgba(249,115,22,0.08)',
-                      border: '1px solid rgba(249,115,22,0.25)',
-                    }}
-                  >
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#f97316', marginBottom: 4 }}>
-                      Direct Consequences:
-                    </div>
-                    <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#cbd5e1', lineHeight: 1.5 }}>
-                      {incident.consequences.map((c, i) => (
-                        <li key={i}>{c}</li>
-                      ))}
-                    </ul>
                   </div>
                 </div>
               )}
 
               {activeTab === 'osha' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <ShieldAlert size={18} color="#ef4444" />
-                    <h3 style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc', margin: 0 }}>
-                      Regulatory Non-Compliance Summary
-                    </h3>
-                  </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <h3 style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: 0 }}>
+                    OSHA Standard Compliance
+                  </h3>
                   <div
                     style={{
-                      background: 'rgba(255,255,255,0.03)',
+                      background: '#f8fafc',
                       borderRadius: 8,
-                      padding: '12px 14px',
-                      border: '1px solid rgba(255,255,255,0.08)',
+                      padding: '10px 12px',
+                      border: '1px solid #edf2f7',
                     }}
                   >
-                    <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>Governing Standard</div>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: '#f87171', marginTop: 2 }}>
+                    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Governing Standard</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>
                       {incident.oshaStandard}
                     </div>
                   </div>
-                  <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6 }}>
-                    This incident triggers immediate mandatory OSHA reporting due to severe life-safety violations.
-                    Failure to implement physical separation controls and operator refresher drills subjects the enterprise
-                    to repeat-violation penalties under OSHA Section 17.
+                  <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.6 }}>
+                    This scenario evaluates mandatory OSHA safety practices. Compliance requires proper hazard verification and adherence to certified safe behaviors.
                   </div>
                 </div>
               )}
 
               {activeTab === 'controls' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <CheckCircle2 size={18} color="#22c55e" />
-                    <h3 style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc', margin: 0 }}>
-                      Required Corrective Actions & Standard Protocol
-                    </h3>
-                  </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <h3 style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: 0 }}>
+                    Required Corrective Protocol
+                  </h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {incident.correctActions.map((action, idx) => (
                       <div
@@ -789,17 +684,17 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
                         style={{
                           display: 'flex',
                           alignItems: 'flex-start',
-                          gap: 10,
-                          fontSize: 13,
-                          color: '#e2e8f0',
-                          background: 'rgba(34,197,94,0.08)',
-                          padding: '10px 12px',
+                          gap: 8,
+                          fontSize: 12,
+                          color: '#1e293b',
+                          background: '#f8fafc',
+                          padding: '8px 10px',
                           borderRadius: 8,
-                          borderLeft: '3px solid #22c55e',
+                          border: '1px solid #edf2f7',
                           lineHeight: 1.5,
                         }}
                       >
-                        <CheckCircle2 size={16} color="#22c55e" style={{ flexShrink: 0, marginTop: 2 }} />
+                        <CheckCircle2 size={14} color="#16a34a" style={{ flexShrink: 0, marginTop: 2 }} />
                         <span>{action}</span>
                       </div>
                     ))}
@@ -810,22 +705,22 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
           </div>
         </div>
 
-        {/* ── RIGHT COLUMN: Interactive Sentinel AI Safety Agent ── */}
+        {/* ── RIGHT COLUMN: Interactive Sentinel AI Safety Advisor ── */}
         <div
           style={{
             display: 'flex',
             flexDirection: 'column',
             height: '100%',
-            background: '#0a0d14',
+            background: '#ffffff',
             overflow: 'hidden',
           }}
         >
           {/* Agent Header */}
           <div
             style={{
-              padding: '14px 18px',
-              background: '#0f1422',
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              padding: '12px 18px',
+              background: '#ffffff',
+              borderBottom: '1px solid #eef2f6',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -835,51 +730,49 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
               <div
                 style={{
                   position: 'relative',
-                  width: 34,
-                  height: 34,
+                  width: 32,
+                  height: 32,
                   borderRadius: '50%',
                   background: 'linear-gradient(135deg, #f97316, #ea580c)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  boxShadow: '0 0 12px rgba(249,115,22,0.4)',
                 }}
               >
-                <Bot size={18} color="#ffffff" />
+                <Bot size={16} color="#ffffff" />
                 <span
                   style={{
                     position: 'absolute',
                     bottom: 0,
                     right: 0,
-                    width: 9,
-                    height: 9,
+                    width: 7,
+                    height: 7,
                     borderRadius: '50%',
-                    background: '#22c55e',
-                    border: '2px solid #0f1422',
+                    background: '#16a34a',
+                    border: '1px solid #ffffff',
                   }}
                 />
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: '#ffffff' }}>
-                    Sentinel AI Safety Advisor
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
+                    Sentinel AI Advisor
                   </span>
                   <span
                     style={{
                       fontSize: 10,
                       fontWeight: 700,
-                      background: 'rgba(34,197,94,0.15)',
-                      color: '#4ade80',
+                      background: 'rgba(22,163,74,0.08)',
+                      color: '#16a34a',
                       padding: '1px 6px',
-                      borderRadius: 4,
-                      border: '1px solid rgba(34,197,94,0.3)',
+                      borderRadius: 999,
                     }}
                   >
                     Active
                   </span>
                 </div>
                 <div style={{ fontSize: 11, color: '#94a3b8' }}>
-                  Ask questions to understand the concept before assessment
+                  Ask questions to understand the concept
                 </div>
               </div>
             </div>
@@ -896,17 +789,17 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
               }}
               title="Reset Chat"
               style={{
-                background: 'transparent',
-                border: 'none',
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
                 color: '#64748b',
                 cursor: 'pointer',
-                padding: 6,
+                padding: '5px 8px',
                 borderRadius: 6,
                 display: 'flex',
                 alignItems: 'center',
               }}
             >
-              <RefreshCw size={14} />
+              <RefreshCw size={12} />
             </button>
           </div>
 
@@ -918,7 +811,8 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
               padding: '16px 18px',
               display: 'flex',
               flexDirection: 'column',
-              gap: 14,
+              gap: 12,
+              background: '#f8fafc',
             }}
           >
             {chatMessages.map((msg, i) => {
@@ -938,35 +832,32 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
                       display: 'flex',
                       alignItems: 'center',
                       gap: 6,
-                      marginBottom: 4,
+                      marginBottom: 3,
                       fontSize: 10,
-                      color: '#64748b',
+                      color: '#94a3b8',
                       padding: '0 4px',
                     }}
                   >
                     {isAssistant ? (
-                      <>
-                        <Sparkles size={11} color="#f97316" />
-                        <span style={{ fontWeight: 700, color: '#f97316' }}>Sentinel Copilot</span>
-                      </>
+                      <span style={{ fontWeight: 700, color: '#ea580c' }}>Sentinel AI</span>
                     ) : (
-                      <span style={{ fontWeight: 700, color: '#94a3b8' }}>You (Trainee)</span>
+                      <span style={{ fontWeight: 700, color: '#64748b' }}>You</span>
                     )}
-                    <span>• {msg.timestamp}</span>
+                    <span>· {msg.timestamp}</span>
                   </div>
 
                   <div
                     style={{
                       maxWidth: '92%',
-                      padding: '12px 14px',
-                      borderRadius: isAssistant ? '4px 14px 14px 14px' : '14px 4px 14px 14px',
-                      background: isAssistant ? '#131826' : 'linear-gradient(135deg, #ea580c, #c2410c)',
-                      border: isAssistant ? '1px solid rgba(255,255,255,0.1)' : 'none',
-                      color: '#f8fafc',
+                      padding: '10px 14px',
+                      borderRadius: isAssistant ? '4px 12px 12px 12px' : '12px 4px 12px 12px',
+                      background: isAssistant ? '#ffffff' : '#0f172a',
+                      border: isAssistant ? '1px solid #e2e8f0' : 'none',
+                      color: isAssistant ? '#1e293b' : '#ffffff',
                       fontSize: 13,
-                      lineHeight: 1.6,
+                      lineHeight: 1.5,
                       whiteSpace: 'pre-wrap',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.02)',
                     }}
                   >
                     {msg.content}
@@ -976,32 +867,29 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
             })}
 
             {isTyping && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: '#131826', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', width: 'fit-content' }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#f97316', animation: 'pulse 1s infinite' }} />
-                <span style={{ fontSize: 12, color: '#94a3b8' }}>Sentinel is analyzing safety regulation...</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: '#ffffff', borderRadius: 8, border: '1px solid #e2e8f0', width: 'fit-content' }}>
+                <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#f97316' }} />
+                <span style={{ fontSize: 11, color: '#64748b' }}>Analyzing safety protocol...</span>
               </div>
             )}
 
             <div ref={chatBottomRef} />
           </div>
 
-          {/* Quick-Prompt Recommendation Chips */}
+          {/* Suggested Prompts */}
           <div
             style={{
-              padding: '10px 16px 4px',
-              background: '#0c101c',
-              borderTop: '1px solid rgba(255,255,255,0.06)',
+              padding: '8px 16px 4px',
+              background: '#ffffff',
+              borderTop: '1px solid #eef2f6',
             }}
           >
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <HelpCircle size={12} /> Suggested Concept Queries:
-            </div>
             <div
               style={{
                 display: 'flex',
                 flexWrap: 'wrap',
                 gap: 6,
-                maxHeight: 74,
+                maxHeight: 64,
                 overflowY: 'auto',
               }}
             >
@@ -1014,23 +902,23 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
                     fontSize: 11,
                     padding: '4px 10px',
                     borderRadius: 999,
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    color: '#cbd5e1',
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    color: '#475569',
                     cursor: 'pointer',
                     textAlign: 'left',
-                    transition: 'all 0.15s',
                     whiteSpace: 'nowrap',
+                    fontWeight: 500,
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(249,115,22,0.15)'
-                    e.currentTarget.style.borderColor = 'rgba(249,115,22,0.4)'
-                    e.currentTarget.style.color = '#f97316'
+                    e.currentTarget.style.background = '#ffffff'
+                    e.currentTarget.style.borderColor = '#cbd5e1'
+                    e.currentTarget.style.color = '#0f172a'
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
-                    e.currentTarget.style.color = '#cbd5e1'
+                    e.currentTarget.style.background = '#f8fafc'
+                    e.currentTarget.style.borderColor = '#e2e8f0'
+                    e.currentTarget.style.color = '#475569'
                   }}
                 >
                   {q}
@@ -1042,9 +930,9 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
           {/* Chat Input Box */}
           <div
             style={{
-              padding: '12px 16px 16px',
-              background: '#0c101c',
-              borderTop: '1px solid rgba(255,255,255,0.08)',
+              padding: '10px 16px 14px',
+              background: '#ffffff',
+              borderTop: '1px solid #eef2f6',
               display: 'flex',
               gap: 8,
               alignItems: 'center',
@@ -1061,15 +949,15 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
                   handleSendMessage()
                 }
               }}
-              placeholder="Ask Sentinel AI about this incident case..."
+              placeholder="Ask Sentinel AI about this incident..."
               disabled={isTyping}
               style={{
                 flex: 1,
-                padding: '10px 14px',
-                borderRadius: 10,
-                background: '#151b2c',
-                border: '1px solid rgba(255,255,255,0.12)',
-                color: '#ffffff',
+                padding: '9px 12px',
+                borderRadius: 8,
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                color: '#0f172a',
                 fontSize: 13,
                 outline: 'none',
               }}
@@ -1079,26 +967,25 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
               onClick={() => handleSendMessage()}
               disabled={!inputMessage.trim() || isTyping}
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 10,
-                background: inputMessage.trim() && !isTyping ? '#f97316' : 'rgba(255,255,255,0.06)',
-                color: inputMessage.trim() && !isTyping ? '#ffffff' : '#64748b',
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                background: inputMessage.trim() && !isTyping ? '#f97316' : '#f1f5f9',
+                color: inputMessage.trim() && !isTyping ? '#ffffff' : '#94a3b8',
                 border: 'none',
                 cursor: inputMessage.trim() && !isTyping ? 'pointer' : 'default',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                transition: 'all 0.15s',
               }}
             >
-              <Send size={16} />
+              <Send size={15} />
             </button>
           </div>
         </div>
       </div>
 
-      {/* ── Fullscreen Image Modal ── */}
+      {/* ── Fullscreen Modal ── */}
       {isImageZoomed && (
         <div
           onClick={() => setIsImageZoomed(false)}
@@ -1106,12 +993,12 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
             position: 'fixed',
             inset: 0,
             zIndex: 250,
-            background: 'rgba(0,0,0,0.85)',
-            backdropFilter: 'blur(12px)',
+            background: 'rgba(15,23,42,0.85)',
+            backdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: 30,
+            padding: 24,
             cursor: 'zoom-out',
           }}
         >
@@ -1119,37 +1006,20 @@ export function IncidentAnalysisPhase({ scenario, onComplete }: Props) {
             style={{
               position: 'relative',
               width: '90vw',
-              maxWidth: 1100,
-              height: '75vh',
+              maxWidth: 1000,
+              height: '70vh',
               borderRadius: 16,
               overflow: 'hidden',
-              border: '2px solid rgba(255,255,255,0.2)',
-              boxShadow: '0 25px 80px rgba(0,0,0,0.8)',
+              border: '1px solid rgba(255,255,255,0.2)',
+              background: '#000000',
             }}
           >
             <Image
               src={incident.imageSrc}
               alt={scenario.title}
               fill
-              style={{ objectFit: 'contain', background: '#000' }}
+              style={{ objectFit: 'contain' }}
             />
-            <div
-              style={{
-                position: 'absolute',
-                bottom: 16,
-                left: 20,
-                right: 20,
-                background: 'rgba(15,23,42,0.85)',
-                backdropFilter: 'blur(8px)',
-                padding: '12px 18px',
-                borderRadius: 10,
-                border: '1px solid rgba(255,255,255,0.1)',
-                color: '#ffffff',
-                fontSize: 13,
-              }}
-            >
-              <strong style={{ color: '#f87171' }}>{incident.caseNumber}:</strong> {scenario.negativeCase.description}
-            </div>
           </div>
         </div>
       )}

@@ -120,10 +120,30 @@ export function TrainingExperience({ scenario }: Props) {
   }
 
   // Build the immersive version of the scenario
+  const isFallScenario =
+    scenario.id === 'construction-fall-006' ||
+    scenario.id === 'fall-protection-004' ||
+    scenario.category === 'construction_safety'
+
   const immersiveScenario = {
     ...FORKLIFT_IMMERSIVE_SCENARIO,
     ...scenario,
-    immersiveTracks: FORKLIFT_IMMERSIVE_SCENARIO.immersiveTracks,
+    video: {
+      ...scenario.video,
+      positive: isFallScenario ? '/videos/fall-positive.mov' : scenario.video.positive,
+    },
+    immersiveTracks: isFallScenario
+      ? {
+          ...FORKLIFT_IMMERSIVE_SCENARIO.immersiveTracks,
+          positive: {
+            url: '/videos/fall-positive.mov',
+            is360: false,
+            label: '100% Continuous Tie-Off Safe Procedure',
+            caseType: 'positive' as const,
+            cues: [],
+          },
+        }
+      : FORKLIFT_IMMERSIVE_SCENARIO.immersiveTracks,
   }
 
   // ── Phase Step Indicator ──────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ interface Props {
   autoPlay?: boolean
 }
 
-// ─── Colour helpers keyed on SafeGuard AI semantics ──────────────────────────
+// ─── Colour helpers keyed on ClumsAI semantics ──────────────────────────
 const CUE_COLORS: Record<NonNullable<SeverityLevel | 'default'>, { border: string; bg: string; accent: string; label: string }> = {
   critical: { border: 'rgba(239,68,68,0.6)',  bg: 'rgba(127,29,29,0.85)',  accent: '#ef4444', label: 'CRITICAL HAZARD' },
   high:     { border: 'rgba(239,68,68,0.4)',  bg: 'rgba(30,10,10,0.9)',    accent: '#f87171', label: 'HIGH RISK'       },
@@ -182,7 +182,7 @@ function DecisionOverlay({ cue, onAnswer, answered, onResume, elapsedMs }: Decis
             fontSize: 13, color: 'rgba(255,255,255,0.8)', lineHeight: 1.6,
           }}>
             <span style={{ fontWeight: 700, color: answered.correct ? '#10b981' : '#ef4444' }}>
-              {answered.correct ? '✓ Correct — ' : '✗ Incorrect — '}
+              {answered.correct ? '✓ Correct: ' : '✗ Incorrect: '}
             </span>
             {cue.explanation}
           </div>
@@ -561,7 +561,7 @@ export function ImmersiveVideoPlayer({ track, onComplete, autoPlay = false }: Pr
                     display: 'flex', alignItems: 'center', gap: 5,
                   }}>
                     {timelineState.answeredCueIds.includes(c.id) ? <CheckCircle size={10} /> : <Eye size={10} />}
-                    @{c.atSeconds}s — {c.type}
+                    @{c.atSeconds}s · {c.type}
                   </div>
                 ))}
               </div>

@@ -207,7 +207,7 @@ const FORKLIFT_SPATIAL_ZONES = [
 const FORKLIFT_NEGATIVE_TRACK = {
   url: '/demo/videos/forklift-negative.mp4',
   is360: false,                         // will become true when real 360° asset is ready
-  label: 'UNSAFE BEHAVIOR — Incident at Blind Corner',
+  label: 'UNSAFE BEHAVIOR: Incident at Blind Corner',
   caseType: 'negative' as const,
   sivsMetadata: FORKLIFT_SIVS_METADATA,
   spatialZones: FORKLIFT_SPATIAL_ZONES,
@@ -219,13 +219,13 @@ const FORKLIFT_NEGATIVE_TRACK = {
       stage: 'recognize' as const,
       prompt: 'The worker is approaching the intersection. What should they do RIGHT NOW?',
       options: [
-        'Continue at the same pace — the aisle looks clear',
+        'Continue at the same pace: the aisle looks clear',
         'Slow down and prepare to stop before the corner',
         'Speed up to get past the junction quickly',
-        'Look at their phone briefly — forklifts always honk',
+        'Look at their phone briefly: forklifts always honk',
       ],
       correctOptionIndex: 1,
-      explanation: 'At any blind corner, OSHA 1910.178 requires slowing and preparing to stop. The shelving unit eliminates your sight-line — the forklift may already be around the corner.',
+      explanation: 'At any blind corner, OSHA 1910.178 requires slowing and preparing to stop. The shelving unit eliminates your sight-line: the forklift may already be around the corner.',
       severity: 'high' as const,
       spatialDirection: { yaw: 0, pitch: -5, toleranceDeg: 30 },
     },
@@ -238,7 +238,7 @@ const FORKLIFT_NEGATIVE_TRACK = {
       options: [
         'The worker trips on the floor marking',
         'The forklift driver sees them and stops in time',
-        'A 3,000 kg forklift at 8 km/h collides — 4-metre stopping distance is not enough',
+        'A 3,000 kg forklift at 8 km/h collides: 4-metre stopping distance is not enough',
         'The alarm system triggers automatically',
       ],
       correctOptionIndex: 2,
@@ -252,7 +252,7 @@ const FORKLIFT_NEGATIVE_TRACK = {
 const FORKLIFT_POSITIVE_TRACK = {
   url: '/demo/videos/forklift-positive.mp4',
   is360: false,
-  label: 'CORRECT PROCEDURE — Stop-and-Check Protocol',
+  label: 'CORRECT PROCEDURE: Stop-and-Check Protocol',
   caseType: 'positive' as const,
   sivsMetadata: FORKLIFT_SIVS_METADATA,
   spatialZones: FORKLIFT_SPATIAL_ZONES,
@@ -270,7 +270,7 @@ const FORKLIFT_POSITIVE_TRACK = {
         'Stopping is only required when a forklift is visible',
       ],
       correctOptionIndex: 1,
-      explanation: 'The floor line marks the outer edge of the forklift travel arc. Stopping before it means your body is physically outside the danger zone while you check — not partially inside it.',
+      explanation: 'The floor line marks the outer edge of the forklift travel arc. Stopping before it means your body is physically outside the danger zone while you check, not partially inside it.',
       severity: 'medium' as const,
       spatialDirection: { yaw: 0, pitch: -15, toleranceDeg: 20 },
     },
@@ -340,7 +340,7 @@ export const FORKLIFT_QUIZ_QUESTIONS = [
     question: 'A forklift weighing 3,000kg is traveling at 8 km/h. What does this mean for stopping distance?',
     options: [
       'It can stop instantly because it has good brakes',
-      'It needs approximately 4 meters to stop — much longer than a person expects',
+      'It needs approximately 4 meters to stop, much longer than a person expects',
       'The weight is irrelevant; only speed matters',
       'It will always stop before hitting a pedestrian',
     ],
@@ -353,7 +353,7 @@ export const FORKLIFT_QUIZ_QUESTIONS = [
     id: 'q4',
     question: 'What is the correct behavior when you see a forklift approaching a shared zone?',
     options: [
-      'Continue walking — forklifts always stop for pedestrians',
+      'Continue walking: forklifts always stop for pedestrians',
       'Run quickly to cross before the forklift arrives',
       'Stop, make eye contact with the operator, and wait until they signal you to pass',
       'Wave your hands and expect the forklift to stop immediately',
@@ -552,7 +552,7 @@ export const FALL_PROTECTION_SCENARIO: Scenario = {
     timeLimit: 300,
   },
   video: {
-    positive: '/demo/videos/forklift-positive.mp4',
+    positive: '/videos/fall-positive.mov',
     negative: '/demo/videos/forklift-negative.mp4',
   },
   simulation: {
@@ -700,22 +700,22 @@ export const FIRE_QUIZ_QUESTIONS = [
     id: 'fq2',
     question: 'A paint storage fire is classified as a Class B fire. What type of extinguisher should you use?',
     options: [
-      'Class A water extinguisher — water cools all fires effectively',
+      'Class A water extinguisher: water cools all fires effectively',
       'CO₂ or dry chemical extinguisher rated for Class B flammable liquid fires',
-      'Any available extinguisher — speed is more important than type',
+      'Any available extinguisher: speed is more important than type',
       'Class K wet chemical extinguisher designed for cooking oils',
     ],
     correctIndex: 1,
     explanation:
-      'Class B fires involve flammable liquids (solvents, paints, oils, gasoline). Using water on Class B fires is extremely dangerous — it spreads burning liquid and can cause steam explosions. CO₂ extinguishers smother the fire by removing oxygen. Dry chemical (ABC powder) interrupts the combustion chain reaction. Never use water on Class B fires.',
+      'Class B fires involve flammable liquids (solvents, paints, oils, gasoline). Using water on Class B fires is extremely dangerous because it spreads burning liquid and can cause steam explosions. CO₂ extinguishers smother the fire by removing oxygen. Dry chemical (ABC powder) interrupts the combustion chain reaction. Never use water on Class B fires.',
     hazardId: 'paint-fire-01',
   },
   {
     id: 'fq3',
     question: 'The fire has grown beyond the initial container. The smoke layer is dropping. Should you attempt to fight the fire or evacuate?',
     options: [
-      'Continue fighting — more extinguisher passes will bring it under control',
-      'Evacuate immediately — fire that has spread beyond initial containment exceeds safe suppression threshold',
+      'Continue fighting: more extinguisher passes will bring it under control',
+      'Evacuate immediately: fire that has spread beyond initial containment exceeds safe suppression threshold',
       'Open nearby windows first to reduce smoke, then fight the fire',
       'Wait for additional coworkers to arrive before evacuating',
     ],
@@ -729,7 +729,7 @@ export const FIRE_QUIZ_QUESTIONS = [
     question: 'As you evacuate through a smoke-filled corridor, what is the correct body position?',
     options: [
       'Run upright as fast as possible to minimize exposure time',
-      'Crawl low on hands and knees — smoke rises, cleaner air stays near the floor',
+      'Crawl low on hands and knees: smoke rises, cleaner air stays near the floor',
       'Walk normally while covering your mouth with your shirt',
       'Climb onto machinery to stay above the smoke level',
     ],
@@ -743,13 +743,13 @@ export const FIRE_QUIZ_QUESTIONS = [
     question: 'You pass through a fire door while evacuating. What must you do with it?',
     options: [
       'Prop it open so other evacuees can follow you through easily',
-      'Close it completely — fire doors are rated to hold back fire and smoke for 20–90 minutes',
+      'Close it completely: fire doors are rated to hold back fire and smoke for 20-90 minutes',
       'Leave it however you found it to avoid slowing your escape',
       'Break the glass panel to activate automatic door closer',
     ],
     correctIndex: 1,
     explanation:
-      'Fire doors are engineered barriers rated to contain fire and smoke for 20 to 90 minutes. Propping them open eliminates this protection and can allow fire to consume an entire building in minutes. Always close fire doors behind you during evacuation — the door you close may save the lives of people still inside.',
+      'Fire doors are engineered barriers rated to contain fire and smoke for 20 to 90 minutes. Propping them open eliminates this protection and can allow fire to consume an entire building in minutes. Always close fire doors behind you during evacuation to protect coworkers.',
     hazardId: 'blocked-exit-01',
   },
 ]
@@ -830,7 +830,7 @@ export const CONSTRUCTION_FALL_SCENARIO: Scenario = {
   },
 
   video: {
-    positive: '/demo/videos/forklift-positive.mp4',
+    positive: '/videos/fall-positive.mov',
     negative: '/demo/videos/forklift-negative.mp4',
   },
 
@@ -872,14 +872,14 @@ export const CONSTRUCTION_FALL_QUIZ_QUESTIONS = [
     id: 'cfq1',
     question: 'Under OSHA 1926.502, at what minimum height above a lower level must fall protection be provided on a construction site?',
     options: [
-      '3 meters (10 feet) — only when working on roof structures',
-      '1.8 meters (6 feet) — for all construction activities near unprotected edges',
-      '4.5 meters (15 feet) — when using scaffolding systems',
-      '2.4 meters (8 feet) — only when no safety nets are deployed',
+      '3 meters (10 feet): only when working on roof structures',
+      '1.8 meters (6 feet): for all construction activities near unprotected edges',
+      '4.5 meters (15 feet): when using scaffolding systems',
+      '2.4 meters (8 feet): only when no safety nets are deployed',
     ],
     correctIndex: 1,
     explanation:
-      'OSHA 1926.502(b) mandates fall protection for all construction workers at heights of 6 feet (1.8 meters) or more above a lower level. This includes scaffolding, leading edges, floor holes, and wall openings. The 6-foot trigger height is absolute — no exceptions for speed of work or distance from edge.',
+      'OSHA 1926.502(b) mandates fall protection for all construction workers at heights of 6 feet (1.8 meters) or more above a lower level. This includes scaffolding, leading edges, floor holes, and wall openings. The 6-foot trigger height is absolute with no exceptions for speed of work.',
     hazardId: 'missing-guardrail-01',
   },
   {
@@ -888,12 +888,12 @@ export const CONSTRUCTION_FALL_QUIZ_QUESTIONS = [
     options: [
       'Disconnect both lanyards, move quickly, then reconnect at the next anchor point',
       'Use dual-lanyard leapfrog: connect second lanyard to new anchor before disconnecting first',
-      'One lanyard is sufficient — OSHA only requires one attachment at a time',
+      'One lanyard is sufficient: OSHA only requires one attachment at a time',
       'Remove harness entirely if the distance is less than 2 meters',
     ],
     correctIndex: 1,
     explanation:
-      'The dual-lanyard leapfrog technique ensures 100% continuous tie-off: connect Lanyard B to the next anchor point BEFORE unclipping Lanyard A from the previous one. This means you are always attached to at least one certified anchor point at every moment. Even a fraction of a second unattached at height represents a fatal risk.',
+      'The dual-lanyard leapfrog technique ensures 100% continuous tie-off: connect Lanyard B to the next anchor point BEFORE unclipping Lanyard A from the previous one. This means you are always attached to at least one certified anchor point at every moment.',
     hazardId: 'disconnected-lanyard-01',
   },
   {
@@ -907,21 +907,21 @@ export const CONSTRUCTION_FALL_QUIZ_QUESTIONS = [
     ],
     correctIndex: 1,
     explanation:
-      'An unsecured scaffold plank is an immediate life-safety hazard. The correct action is to stop, NOT approach the plank, apply a "Do Not Use" tag/barrier, and immediately notify the site safety officer or supervisor. Only a competent person may re-inspect and secure the plank. Taking independent action to reposition it without authorization risks your own fall.',
+      'An unsecured scaffold plank is an immediate life-safety hazard. The correct action is to stop, not approach the plank, apply a "Do Not Use" tag, and immediately notify the site safety supervisor.',
     hazardId: 'unsecured-plank-01',
   },
   {
     id: 'cfq4',
     question: 'Your coworker has disconnected both lanyards to reach a bolt over the beam edge. What is the correct response?',
     options: [
-      'Ignore it — it is their personal choice and not your responsibility on site',
+      'Ignore it: it is their personal choice and not your responsibility on site',
       'Complete your current task first, then speak to them about it afterward',
-      'Immediately call out and stop their work — any worker can issue a stop-work authority for life-safety violations',
+      'Immediately call out and stop their work: any worker can issue a stop-work authority for life-safety violations',
       'Report it to HR after the shift ends',
     ],
     correctIndex: 2,
     explanation:
-      'Every worker has Stop Work Authority (SWA) for life-safety hazards on construction sites. An unattached worker at 8 meters with no fall arrest is an immediate fatal risk. Calling out immediately is not only your right — it is your ethical and legal obligation under OSHA\'s General Duty Clause. Do not wait, do not complete your task first.',
+      'Every worker has Stop Work Authority (SWA) for life-safety hazards on construction sites. An unattached worker at 8 meters with no fall arrest is an immediate fatal risk. Calling out immediately is an ethical and legal obligation.',
     hazardId: 'disconnected-lanyard-01',
   },
   {
@@ -935,7 +935,7 @@ export const CONSTRUCTION_FALL_QUIZ_QUESTIONS = [
     ],
     correctIndex: 1,
     explanation:
-      'Harness webbing must be inspected before every use under ANSI Z359 and OSHA standards. Any fraying (even a single broken strand), cuts, abrasion damage, chemical contamination, heat damage, or deformed hardware requires immediate removal from service. A compromised harness will not arrest a fall — it will fail at the exact moment you need it. Dirt and cold stiffness are NOT disqualifying; structural integrity is.',
+      'Harness webbing must be inspected before every use under ANSI Z359 and OSHA standards. Any fraying, cuts, chemical contamination, heat damage, or deformed hardware requires immediate removal from service.',
     hazardId: 'unsecured-plank-01',
   },
 ]
@@ -946,9 +946,6 @@ export const ALL_SCENARIOS: Scenario[] = [
   FORKLIFT_BLIND_CORNER_SCENARIO,
   INDUSTRIAL_FIRE_SCENARIO,
   CONSTRUCTION_FALL_SCENARIO,
-  CHEMICAL_SPILL_SCENARIO,
-  LOTO_ELECTRICAL_SCENARIO,
-  FALL_PROTECTION_SCENARIO,
 ]
 
 export function getScenarioById(id: string): Scenario | undefined {
@@ -1107,14 +1104,14 @@ export const AGENTIC_QUESTIONS_MAP: Record<string, AgenticQuestion[]> = {
       difficulty: 'hard',
       question: 'A 3,000 kg forklift traveling at 8 km/h requires approximately how much stopping distance on a dry concrete warehouse floor?',
       options: [
-        'Less than 0.5 meters — electric forklifts have regenerative braking',
-        'Approximately 4 meters — far beyond typical pedestrian reaction distance',
+        'Less than 0.5 meters: electric forklifts have regenerative braking',
+        'Approximately 4 meters: far beyond typical pedestrian reaction distance',
         'About 1.5 meters if emergency brakes are applied immediately',
-        'Over 10 meters — warehouse floors are too slippery for effective braking',
+        'Over 10 meters: warehouse floors are too slippery for effective braking',
       ],
       correctIndex: 1,
       explanation:
-        'A loaded 3,000 kg forklift at 8 km/h requires 3.5–4.5 meters to stop on dry concrete. This exceeds average human reaction distance (~2 m), which is why pedestrian exclusion zones and stop-and-check protocols are mandatory.',
+        'A loaded 3,000 kg forklift at 8 km/h requires 3.5 to 4.5 meters to stop on dry concrete. This exceeds average human reaction distance, which is why pedestrian exclusion zones and stop-and-check protocols are mandatory.',
     },
     {
       id: 'fk-a3',
@@ -1140,10 +1137,10 @@ export const AGENTIC_QUESTIONS_MAP: Record<string, AgenticQuestion[]> = {
       difficulty: 'medium',
       question: 'The fire in the video originated in a paint solvent storage area. What fire class does this represent and which suppression agent is correct?',
       options: [
-        'Class A (ordinary combustibles) — requires pressurized water sprinkler activation',
-        'Class B (flammable liquids) — requires CO₂ or dry chemical powder, NOT water',
-        'Class C (electrical) — requires halon or clean-agent system activation',
-        'Class D (combustible metals) — requires dry sand or specialized Class D extinguisher',
+        'Class A (ordinary combustibles): requires pressurized water sprinkler activation',
+        'Class B (flammable liquids): requires CO₂ or dry chemical powder, NOT water',
+        'Class C (electrical): requires halon or clean-agent system activation',
+        'Class D (combustible metals): requires dry sand or specialized Class D extinguisher',
       ],
       correctIndex: 1,
       explanation:
@@ -1155,10 +1152,10 @@ export const AGENTIC_QUESTIONS_MAP: Record<string, AgenticQuestion[]> = {
       difficulty: 'hard',
       question: 'During the fire incident, what is the correct RACE protocol sequence that was violated?',
       options: [
-        'Rescue → Attack → Contain → Evacuate — the worker skipped Attack and went directly to Evacuate',
-        'Rescue anyone in immediate danger → Alert/Alarm → Contain the fire → Evacuate — the worker skipped Alert and attempted suppression without alarming others',
-        'Report → Assemble → Control → Evacuate — the worker attempted to control without reporting first',
-        'Rescue → Assess → Contain → Extinguish — the worker only partially completed Contain before evacuating',
+        'Rescue → Attack → Contain → Evacuate: the worker skipped Attack and went directly to Evacuate',
+        'Rescue anyone in immediate danger → Alert/Alarm → Contain the fire → Evacuate: the worker skipped Alert and attempted suppression without alarming others',
+        'Report → Assemble → Control → Evacuate: the worker attempted to control without reporting first',
+        'Rescue → Assess → Contain → Extinguish: the worker only partially completed Contain before evacuating',
       ],
       correctIndex: 1,
       explanation:
@@ -1170,14 +1167,14 @@ export const AGENTIC_QUESTIONS_MAP: Record<string, AgenticQuestion[]> = {
       difficulty: 'hard',
       question: 'At what concentration range do paint solvent vapors become explosively flammable in air?',
       options: [
-        'Only above 50% concentration — industrial ventilation normally prevents this level',
-        'Between 1% and 7% vapor concentration (LEL to UEL) — easily reached in poorly ventilated storage areas',
+        'Only above 50% concentration: industrial ventilation normally prevents this level',
+        'Between 1% and 7% vapor concentration (LEL to UEL): easily reached in poorly ventilated storage areas',
         'Only when ignition sources exceed 800°C surface temperature',
-        'Concentrations above 25% are required — standard HVAC systems prevent this',
+        'Concentrations above 25% are required: standard HVAC systems prevent this',
       ],
       correctIndex: 1,
       explanation:
-        'Most paint solvents (toluene LEL 1.1%, UEL 7.1%) become explosive between just 1–7% air concentration — achievable rapidly in enclosed storage. A single static spark or electrical arc is sufficient to trigger detonation within this range.',
+        'Most paint solvents (toluene LEL 1.1%, UEL 7.1%) become explosive between just 1% and 7% air concentration. A single static spark or electrical arc is sufficient to trigger detonation within this range.',
     },
   ],
 
@@ -1188,14 +1185,14 @@ export const AGENTIC_QUESTIONS_MAP: Record<string, AgenticQuestion[]> = {
       difficulty: 'medium',
       question: 'At what height above a lower level does OSHA 1926.502 mandate 100% fall protection for construction workers?',
       options: [
-        '10 feet (3 meters) — only when working near open floor holes',
-        '6 feet (1.8 meters) — for all construction activities near unprotected edges',
-        '15 feet (4.5 meters) — only applicable to structural steel erection',
-        '4 feet (1.2 meters) — but only when working on scaffolding without guardrails',
+        '10 feet (3 meters): only when working near open floor holes',
+        '6 feet (1.8 meters): for all construction activities near unprotected edges',
+        '15 feet (4.5 meters): only applicable to structural steel erection',
+        '4 feet (1.2 meters): but only when working on scaffolding without guardrails',
       ],
       correctIndex: 1,
       explanation:
-        'OSHA 1926.502(d) is absolute: 100% fall protection is mandatory above 6 feet in construction. At 50 meters, the fall in this scenario was unsurvivable. The 6-foot threshold covers all construction activities — no exceptions for "quick tasks".',
+        'OSHA 1926.502(d) is absolute: 100% fall protection is mandatory above 6 feet in construction. At 50 meters, the fall in this scenario was unsurvivable. The 6-foot threshold covers all construction activities with no exceptions for quick tasks.',
     },
     {
       id: 'cf-a2',
@@ -1210,7 +1207,7 @@ export const AGENTIC_QUESTIONS_MAP: Record<string, AgenticQuestion[]> = {
       ],
       correctIndex: 1,
       explanation:
-        'Continuous tie-off means zero moments without fall protection. The dual-lanyard leapfrog technique: lanyard A clipped, advance to new position, clip lanyard B, then release lanyard A. In the video, the worker disconnected both simultaneously — creating a 100% unprotected window at 50 meters.',
+        'Continuous tie-off means zero moments without fall protection. The dual-lanyard leapfrog technique: lanyard A clipped, advance to new position, clip lanyard B, then release lanyard A. In the video, the worker disconnected both simultaneously, creating an unprotected hazard window.',
     },
     {
       id: 'cf-a3',
@@ -1225,7 +1222,7 @@ export const AGENTIC_QUESTIONS_MAP: Record<string, AgenticQuestion[]> = {
       ],
       correctIndex: 1,
       explanation:
-        'Steel girder surfaces (often 200–300mm wide) with any moisture or debris reduce friction coefficient by 40–60%. Combined with balance requirements at height, this creates a fall risk multiplier. Surface inspection and anti-slip footwear (ASTM F2413 rated) are mandatory before any elevated girder walk.',
+        'Steel girder surfaces with any moisture or debris reduce friction coefficient by 40% to 60%. Combined with balance requirements at height, this creates a fall risk multiplier. Surface inspection and anti-slip footwear are mandatory before any elevated girder walk.',
     },
   ],
 }

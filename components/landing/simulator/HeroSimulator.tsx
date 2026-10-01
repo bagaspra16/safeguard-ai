@@ -60,13 +60,6 @@ export default function HeroSimulator() {
       ) : (
         <Placeholder />
       )}
-
-      <div className={styles.hud}>
-        <div className={`${styles.status} ${styles[phase]}`} role="status">
-          <span className={styles.statusDot} />
-          {scenario.status[phase]}
-        </div>
-      </div>
     </div>
   )
 }

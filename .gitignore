@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# large media & video recordings (exceeds GitHub 100MB limit)
+*.mov
+*.mp4
+/public/videos/
+Screen Recording*

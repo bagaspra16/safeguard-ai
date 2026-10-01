@@ -8,7 +8,7 @@ import {
   FIRE_QUIZ_QUESTIONS,
   CONSTRUCTION_FALL_QUIZ_QUESTIONS,
 } from '@/lib/scenarios/data'
-import { Brain, CheckCircle, XCircle, ChevronRight } from 'lucide-react'
+import { Brain, CheckCircle, XCircle, ChevronRight, Zap } from 'lucide-react'
 
 interface Props {
   scenario: Scenario
@@ -25,10 +25,8 @@ export function QuizPhase({ scenario, onComplete }: Props) {
 
   const [selectedOption, setSelectedOption] = useState<number | null>(null)
   const [submitted, setSubmitted] = useState(false)
-  const [startTime] = useState(Date.now())
-  const [questionStartTime, setQuestionStartTime] = useState(Date.now())
+  const [questionStartTime, setQuestionStartTime] = useState(() => Date.now())
 
-  // Dynamically select the question bank based on scenario ID / category
   const questions = (() => {
     if (scenario.id === 'industrial-fire-005' || scenario.category === 'fire_safety') {
       return FIRE_QUIZ_QUESTIONS
@@ -42,10 +40,10 @@ export function QuizPhase({ scenario, onComplete }: Props) {
     }
     return FORKLIFT_QUIZ_QUESTIONS
   })()
+
   const currentQ = questions[currentQuestionIndex] || questions[0]
   const totalQ = questions.length
   const isLast = currentQuestionIndex === totalQ - 1
-  const isCorrect = submitted && selectedOption === currentQ.correctIndex
 
   const handleSubmit = () => {
     if (selectedOption === null) return
@@ -69,7 +67,6 @@ export function QuizPhase({ scenario, onComplete }: Props) {
     setQuestionStartTime(Date.now())
 
     if (isLast) {
-      // Calculate score
       const allAnswers = [...quizAnswers]
       const currentAnswer = {
         questionId: currentQ.id,
@@ -88,117 +85,206 @@ export function QuizPhase({ scenario, onComplete }: Props) {
     }
   }
 
-  const progress = ((currentQuestionIndex) / totalQ) * 100
+  const progress = ((currentQuestionIndex + 1) / totalQ) * 100
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-        <Brain size={20} style={{ color: 'var(--sg-info)' }} />
-        <h2 style={{ fontSize: 22, fontWeight: 800 }}>Knowledge Check</h2>
-        <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--sg-text-muted)' }}>
-          {currentQuestionIndex + 1} / {totalQ}
+    <div style={{ maxWidth: 680, margin: '0 auto', padding: '36px 20px 60px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              background: 'rgba(249,115,22,0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#ea580c',
+            }}
+          >
+            <Brain size={16} />
+          </div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>
+              Final Knowledge Evaluation
+            </div>
+            <div style={{ fontSize: 11, color: '#64748b' }}>{scenario.title}</div>
+          </div>
+        </div>
+
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>
+          Question {currentQuestionIndex + 1} of {totalQ}
         </span>
       </div>
 
-      {/* Progress */}
-      <div className="sg-progress-bar" style={{ marginBottom: 32 }}>
+      {/* Progress Bar */}
+      <div style={{ height: 4, background: '#f1f5f9', borderRadius: 999, overflow: 'hidden', marginBottom: 20 }}>
         <div
-          className="sg-progress-fill"
-          style={{ width: `${progress}%`, background: 'var(--sg-info)' }}
+          style={{
+            width: `${progress}%`,
+            height: '100%',
+            background: 'linear-gradient(90deg, #f97316, #ea580c)',
+            transition: 'width 0.3s ease',
+          }}
         />
       </div>
 
-      {/* Question */}
-      <div className="sg-surface" style={{ padding: '28px', marginBottom: 20 }}>
-        <div style={{
-          fontSize: 10, fontWeight: 700, color: 'var(--sg-info)',
-          textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12,
-        }}>
-          Question {currentQuestionIndex + 1}
+      {/* Question Card */}
+      <div
+        style={{
+          background: '#ffffff',
+          borderRadius: 18,
+          border: '1px solid #eef2f6',
+          padding: '24px 26px',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.02)',
+          marginBottom: 20,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: '#ea580c',
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            marginBottom: 8,
+          }}
+        >
+          Assessment Question {currentQuestionIndex + 1}
         </div>
-        <p style={{ fontSize: 17, fontWeight: 600, lineHeight: 1.5, marginBottom: 28 }}>
+
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', lineHeight: 1.5, margin: '0 0 20px' }}>
           {currentQ.question}
-        </p>
+        </h2>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* Options */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {currentQ.options.map((opt, i) => {
-            let style: React.CSSProperties = {
-              background: 'var(--sg-bg-elevated)',
-              border: '1px solid var(--sg-border)',
-              borderRadius: 8, padding: '14px 16px',
-              textAlign: 'left', cursor: submitted ? 'default' : 'pointer',
-              fontSize: 14, fontFamily: 'inherit',
-              color: 'var(--sg-text-secondary)',
-              transition: 'all 0.15s', width: '100%',
-            }
-
-            if (submitted) {
-              if (i === currentQ.correctIndex) {
-                style = { ...style, background: 'var(--sg-safe-bg)', border: '1px solid rgba(34,197,94,0.5)', color: 'var(--sg-safe)', fontWeight: 600 }
-              } else if (i === selectedOption) {
-                style = { ...style, background: 'var(--sg-hazard-bg)', border: '1px solid rgba(239,68,68,0.5)', color: 'var(--sg-hazard)', fontWeight: 600 }
-              }
-            } else if (i === selectedOption) {
-              style = { ...style, background: 'var(--sg-accent-dim)', border: '1px solid rgba(245,158,11,0.4)', color: 'var(--sg-accent)', fontWeight: 600 }
-            }
+            const isSelected = selectedOption === i
+            const isRight = submitted && i === currentQ.correctIndex
+            const isWrong = submitted && isSelected && !isRight
 
             return (
               <button
                 key={i}
                 onClick={() => !submitted && setSelectedOption(i)}
                 disabled={submitted}
-                style={style}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '12px 14px',
+                  borderRadius: 10,
+                  background: isRight
+                    ? '#f0fdf4'
+                    : isWrong
+                    ? '#fef2f2'
+                    : isSelected
+                    ? '#fff7ed'
+                    : '#ffffff',
+                  border: `1px solid ${
+                    isRight
+                      ? '#86efac'
+                      : isWrong
+                      ? '#fca5a5'
+                      : isSelected
+                      ? '#f97316'
+                      : '#e2e8f0'
+                  }`,
+                  cursor: submitted ? 'default' : 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s ease',
+                  width: '100%',
+                }}
               >
-                <span style={{ marginRight: 10, fontFamily: 'JetBrains Mono, monospace', fontSize: 12, opacity: 0.6 }}>
-                  {String.fromCharCode(65 + i)}.
+                <span
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 6,
+                    background: isRight
+                      ? '#16a34a'
+                      : isWrong
+                      ? '#dc2626'
+                      : isSelected
+                      ? '#f97316'
+                      : '#f8fafc',
+                    color: isRight || isWrong || isSelected ? '#ffffff' : '#64748b',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    flexShrink: 0,
+                    border: isRight || isWrong || isSelected ? 'none' : '1px solid #e2e8f0',
+                  }}
+                >
+                  {String.fromCharCode(65 + i)}
                 </span>
-                {opt}
-                {submitted && i === currentQ.correctIndex && (
-                  <CheckCircle size={14} style={{ marginLeft: 8, color: 'var(--sg-safe)', verticalAlign: 'middle' }} />
-                )}
-                {submitted && i === selectedOption && i !== currentQ.correctIndex && (
-                  <XCircle size={14} style={{ marginLeft: 8, color: 'var(--sg-hazard)', verticalAlign: 'middle' }} />
-                )}
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontWeight: isSelected || isRight ? 600 : 400,
+                    color: isRight ? '#14532d' : isWrong ? '#7f1d1d' : '#0f172a',
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {opt}
+                </span>
               </button>
             )
           })}
         </div>
       </div>
 
-      {/* Explanation */}
-      {submitted && (
-        <div style={{
-          padding: '16px 20px',
-          background: isCorrect ? 'var(--sg-safe-bg)' : 'var(--sg-hazard-bg)',
-          border: `1px solid ${isCorrect ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
-          borderRadius: 8, marginBottom: 20,
-        }}>
-          <div style={{
-            fontWeight: 700, fontSize: 13, marginBottom: 8,
-            color: isCorrect ? 'var(--sg-safe)' : 'var(--sg-hazard)',
-            display: 'flex', alignItems: 'center', gap: 6,
-          }}>
-            {isCorrect ? <CheckCircle size={14} /> : <XCircle size={14} />}
-            {isCorrect ? 'Correct' : 'Incorrect'}
-          </div>
-          <p style={{ fontSize: 13, color: 'var(--sg-text-secondary)', lineHeight: 1.6 }}>
-            {currentQ.explanation}
-          </p>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: 12 }}>
+      {/* Action Footer */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         {!submitted ? (
           <button
-            className="sg-btn sg-btn-primary"
             onClick={handleSubmit}
             disabled={selectedOption === null}
+            style={{
+              padding: '10px 24px',
+              borderRadius: 999,
+              background:
+                selectedOption === null
+                  ? '#e2e8f0'
+                  : 'linear-gradient(135deg, #f97316, #ea580c)',
+              color: selectedOption === null ? '#94a3b8' : '#ffffff',
+              border: 'none',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: selectedOption === null ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              boxShadow: selectedOption !== null ? '0 4px 12px rgba(249,115,22,0.25)' : 'none',
+            }}
           >
-            Submit Answer
+            <Zap size={14} />
+            <span>Confirm Answer</span>
           </button>
         ) : (
-          <button className="sg-btn sg-btn-primary" onClick={handleNext} style={{ gap: 8 }}>
-            {isLast ? 'See Results' : 'Next Question'}
+          <button
+            onClick={handleNext}
+            style={{
+              padding: '10px 24px',
+              borderRadius: 999,
+              background: 'linear-gradient(135deg, #f97316, #ea580c)',
+              color: '#ffffff',
+              border: 'none',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              boxShadow: '0 4px 12px rgba(249,115,22,0.25)',
+            }}
+          >
+            <span>{isLast ? 'Complete & View Results' : 'Next Question'}</span>
             <ChevronRight size={14} />
           </button>
         )}

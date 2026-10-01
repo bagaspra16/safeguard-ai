@@ -34,7 +34,6 @@ export function VideoPhase({ scenario, caseType, onComplete }: Props) {
     if (!v) return
     if (isPaused) {
       v.pause()
-      setPlaying(false)
     }
   }, [isPaused])
 
@@ -87,16 +86,31 @@ export function VideoPhase({ scenario, caseType, onComplete }: Props) {
   }
 
   return (
-    <div style={{ maxWidth: 860, margin: '0 auto', padding: '40px 24px' }}>
-      {/* Case label */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+    <div style={{
+      width: '100%',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      background: '#f8fafc',
+      overflow: 'hidden',
+    }}>
+      {/* Header bar */}
+      <div style={{
+        flexShrink: 0,
+        padding: '16px 32px',
+        background: '#ffffff',
+        borderBottom: '1px solid #f1f5f9',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 16,
+      }}>
         {isNegative ? (
           <>
             <div className="sg-negative-label">
               <AlertTriangle size={10} style={{ display: 'inline', marginRight: 4 }} />
               NEGATIVE CASE — UNSAFE BEHAVIOR
             </div>
-            <span style={{ fontSize: 13, color: 'var(--sg-text-secondary)' }}>Watch what goes wrong</span>
+            <span style={{ fontSize: 13, color: '#64748b' }}>Watch what goes wrong and identify the critical mistake</span>
           </>
         ) : (
           <>
@@ -104,70 +118,66 @@ export function VideoPhase({ scenario, caseType, onComplete }: Props) {
               <CheckCircle size={10} style={{ display: 'inline', marginRight: 4 }} />
               POSITIVE CASE — CORRECT PROCEDURE
             </div>
-            <span style={{ fontSize: 13, color: 'var(--sg-text-secondary)' }}>The right way to handle this situation</span>
+            <span style={{ fontSize: 13, color: '#64748b' }}>The right way to handle this situation — every step matters</span>
           </>
         )}
+
+        {/* Continue button pushed to the right */}
+        <button
+          className="sg-btn sg-btn-primary"
+          onClick={onComplete}
+          style={{ fontSize: 13, padding: '8px 22px', marginLeft: 'auto', flexShrink: 0 }}
+        >
+          {isNegative ? 'Continue →' : 'Take Quiz →'}
+        </button>
       </div>
 
-      <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>
-        {isNegative ? 'Incident: What Went Wrong' : 'Safe Response: Correct Procedure'}
-      </h2>
-      <p style={{ color: 'var(--sg-text-secondary)', fontSize: 14, marginBottom: 28 }}>
-        {isNegative
-          ? 'Watch this incident video carefully. Identify the exact moment the worker made the critical error.'
-          : 'This video demonstrates the correct stop-and-check procedure. Notice every step the worker takes.'}
-      </p>
-
-      {/* Video player */}
-      <div style={{
-        background: '#000',
-        borderRadius: 12,
-        overflow: 'hidden',
-        border: isNegative ? '2px solid rgba(239,68,68,0.4)' : '2px solid rgba(34,197,94,0.4)',
-        marginBottom: 16,
-        position: 'relative',
-      }}>
+      {/* Video fills remaining height */}
+      <div style={{ flex: 1, position: 'relative', background: '#000', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {error ? (
           <div style={{
-            height: 400,
+            flex: 1,
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            background: '#0a0a0a', color: 'var(--sg-text-muted)', gap: 16,
+            background: 'radial-gradient(ellipse at center, #0f172a 0%, #000 100%)',
+            color: 'rgba(255,255,255,0.6)', gap: 20, padding: 40,
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 64, height: 64, borderRadius: '50%', background: 'var(--sg-bg-elevated)', border: '1px solid var(--sg-border)', color: 'var(--sg-accent)' }}>
-              <Film size={28} />
+            <div style={{
+              width: 72, height: 72, borderRadius: '50%',
+              background: isNegative ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
+              border: `2px solid ${isNegative ? 'rgba(239,68,68,0.4)' : 'rgba(34,197,94,0.4)'}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: isNegative ? '#ef4444' : '#10b981',
+            }}>
+              <Film size={32} />
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontWeight: 600, marginBottom: 8, color: 'var(--sg-text-secondary)' }}>
-                Synthetic Incident Recreation Video
+              <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 8, color: '#ffffff' }}>
+                {isNegative ? 'Incident: What Went Wrong' : 'Safe Response: Correct Procedure'}
               </div>
-              <div style={{ fontSize: 13, color: 'var(--sg-text-muted)', maxWidth: 320 }}>
-                In production, this plays an AI-generated {isNegative ? 'incident' : 'safe response'} video.
-                <br />Demo mode uses a placeholder.
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', maxWidth: 380, lineHeight: 1.6 }}>
+                In production, this plays an AI-generated {isNegative ? 'incident reconstruction' : 'safe procedure demonstration'} video.
               </div>
             </div>
-            {isNegative ? (
-              <div style={{
-                padding: '12px 20px',
-                background: 'var(--sg-hazard-bg)', border: '1px solid rgba(239,68,68,0.3)',
-                borderRadius: 8, fontSize: 13, color: 'var(--sg-hazard)', maxWidth: 460, textAlign: 'center', lineHeight: 1.5,
-              }}>
-                <strong>Incident Sequence:</strong> {scenario.negativeCase?.actions?.length ? scenario.negativeCase.actions.map(a => a.replace(/_/g, ' ')).join(' → ') : scenario.negativeCase?.description}
-              </div>
-            ) : (
-              <div style={{
-                padding: '12px 20px',
-                background: 'var(--sg-safe-bg)', border: '1px solid rgba(34,197,94,0.3)',
-                borderRadius: 8, fontSize: 13, color: 'var(--sg-safe)', maxWidth: 460, textAlign: 'center', lineHeight: 1.5,
-              }}>
-                <strong>Standard Protocol:</strong> {scenario.positiveCase?.actions?.length ? scenario.positiveCase.actions.map(a => a.replace(/_/g, ' ')).join(' → ') : scenario.positiveCase?.description}
-              </div>
-            )}
+            <div style={{
+              padding: '14px 22px',
+              background: isNegative ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)',
+              border: `1px solid ${isNegative ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`,
+              borderRadius: 10, fontSize: 13,
+              color: isNegative ? '#fca5a5' : '#6ee7b7',
+              maxWidth: 520, textAlign: 'center', lineHeight: 1.6,
+            }}>
+              <strong>{isNegative ? 'Incident Sequence:' : 'Standard Protocol:'}</strong>{' '}
+              {isNegative
+                ? (scenario.negativeCase?.actions?.length ? scenario.negativeCase.actions.map(a => a.replace(/_/g, ' ')).join(' → ') : scenario.negativeCase?.description)
+                : (scenario.positiveCase?.actions?.length ? scenario.positiveCase.actions.map(a => a.replace(/_/g, ' ')).join(' → ') : scenario.positiveCase?.description)
+              }
+            </div>
           </div>
         ) : (
           <video
             ref={videoRef}
             src={videoUrl ?? undefined}
-            style={{ width: '100%', display: 'block', maxHeight: 480 }}
+            style={{ width: '100%', height: '100%', display: 'block', objectFit: 'contain', background: '#000' }}
             onTimeUpdate={handleTimeUpdate}
             onEnded={handleEnded}
             onError={handleError}
@@ -185,42 +195,44 @@ export function VideoPhase({ scenario, caseType, onComplete }: Props) {
               position: 'absolute', inset: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer',
-              background: 'rgba(0,0,0,0.3)',
+              background: 'rgba(0,0,0,0.35)',
             }}
           >
             <div style={{
-              width: 64, height: 64, borderRadius: '50%',
-              background: 'rgba(245,158,11,0.9)',
+              width: 72, height: 72, borderRadius: '50%',
+              background: isNegative ? 'rgba(239,68,68,0.9)' : 'rgba(16,185,129,0.9)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: `0 0 40px ${isNegative ? 'rgba(239,68,68,0.5)' : 'rgba(16,185,129,0.5)'}`,
             }}>
-              <Play size={24} fill="#000" style={{ color: '#000' }} />
+              <Play size={30} fill="#fff" style={{ color: '#fff' }} />
             </div>
           </div>
         )}
       </div>
 
-      {/* Controls */}
+      {/* Controls bar at bottom */}
       {!error && (
         <div style={{
-          background: 'var(--sg-bg-elevated)', border: '1px solid var(--sg-border)',
-          borderRadius: 8, padding: '12px 16px',
-          display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24,
+          flexShrink: 0,
+          background: '#0f172a',
+          padding: '10px 20px',
+          display: 'flex', alignItems: 'center', gap: 12,
+          borderTop: '1px solid rgba(255,255,255,0.08)',
         }}>
           <button
             onClick={handlePlay}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--sg-text-primary)', padding: 4 }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ffffff', padding: 4, display: 'flex' }}
           >
             {playing ? <Pause size={16} /> : <Play size={16} />}
           </button>
 
-          {/* Progress */}
           <div
             onClick={handleSeek}
-            style={{ flex: 1, height: 4, background: 'var(--sg-border)', borderRadius: 2, cursor: 'pointer' }}
+            style={{ flex: 1, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 2, cursor: 'pointer', position: 'relative' }}
           >
             <div style={{
               width: `${progress}%`, height: '100%',
-              background: isNegative ? 'var(--sg-hazard)' : 'var(--sg-safe)',
+              background: isNegative ? '#ef4444' : '#10b981',
               borderRadius: 2, transition: 'width 0.1s',
             }} />
           </div>
@@ -232,32 +244,16 @@ export function VideoPhase({ scenario, caseType, onComplete }: Props) {
                 setMuted(!muted)
               }
             }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--sg-text-secondary)', padding: 4 }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', padding: 4, display: 'flex' }}
           >
-            {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+            {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
           </button>
 
-          <button onClick={handleReplay} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--sg-text-secondary)', padding: 4 }}>
+          <button onClick={handleReplay} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', padding: 4, display: 'flex' }}>
             <RotateCcw size={14} />
           </button>
         </div>
       )}
-
-      {/* Continue */}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-        <button
-          className="sg-btn sg-btn-primary"
-          onClick={onComplete}
-          style={{ fontSize: 14, padding: '12px 28px' }}
-        >
-          {isNegative ? 'Continue — Discuss with AI →' : 'Continue — Take Quiz →'}
-        </button>
-        {!ended && (
-          <span style={{ fontSize: 12, color: 'var(--sg-text-muted)' }}>
-            Watch the video above, then continue
-          </span>
-        )}
-      </div>
     </div>
   )
 }

@@ -1,36 +1,42 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import type { Scenario } from '@/types'
 import { useSimulationStore } from '@/lib/simulation/store'
 import {
   Award,
   CheckCircle,
-  XCircle,
-  AlertTriangle,
   RotateCcw,
   ArrowRight,
   Clock,
   Eye,
   ShieldCheck,
-  Bot,
   FileCheck,
   Lock,
   CreditCard,
   Download,
   BadgeCheck,
   Sparkles,
-  TrendingUp,
-  Activity,
-  Star,
-  Flame,
-  ChevronRight,
   X,
+  Shield,
+  Hash,
+  Calendar,
+  Copy,
+  ExternalLink,
 } from 'lucide-react'
 import Link from 'next/link'
 
 interface Props {
   scenario: Scenario
+}
+
+type ModalStep = 'payment_form' | 'processing' | 'certificate'
+
+// Locked certificate data after payment is confirmed
+interface CertData {
+  holderName: string
+  certId: string
+  certUrl: string
 }
 
 export function ResultsPhase({ scenario }: Props) {
@@ -40,13 +46,20 @@ export function ResultsPhase({ scenario }: Props) {
   const decisionCorrect = useSimulationStore((s) => s.decisionCorrect)
   const quizAnswers = useSimulationStore((s) => s.quizAnswers)
   const elapsedSeconds = useSimulationStore((s) => s.elapsedSeconds)
-  const events = useSimulationStore((s) => s.events)
 
   const [aiEvaluation, setAiEvaluation] = useState<string | null>(null)
   const [loadingAi, setLoadingAi] = useState(true)
-  const [showLicenseModal, setShowLicenseModal] = useState(false)
-  const [analysisStep, setAnalysisStep] = useState(0)
-  const [showPaywall, setShowPaywall] = useState(false)
+  const [showModal, setShowModal] = useState(false)
+  const [modalStep, setModalStep] = useState<ModalStep>('payment_form')
+  const [copied, setCopied] = useState(false)
+  const [lockedCert, setLockedCert] = useState<CertData | null>(null)
+  const spinnerRef = useRef<HTMLDivElement>(null)
+
+  // Payment form state
+  const [cardName, setCardName] = useState('')
+  const [cardNumber, setCardNumber] = useState('')
+  const [expiry, setExpiry] = useState('')
+  const [cvv, setCvv] = useState('')
 
   // Calculate scores
   const totalHazards = scenario.hazards.length || 3
@@ -56,9 +69,17 @@ export function ResultsPhase({ scenario }: Props) {
   const quizTotalCount = Math.max(1, quizAnswers.length)
   const quizScore = Math.round((quizCorrectCount / quizTotalCount) * 100)
 
-  // Overall weighted composite score
   const overallScore = Math.round(hazardScore * 0.3 + decisionScore * 0.4 + quizScore * 0.3)
   const passed = overallScore >= scenario.assessment.passingScore
+
+  // Dates
+  const { issuedDate, expiryDate } = useMemo(() => {
+    const now = Date.now()
+    return {
+      issuedDate: new Date(now).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      expiryDate: new Date(now + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+    }
+  }, [])
 
   const formatTime = (secs: number) => {
     const mins = Math.floor(secs / 60)
@@ -66,15 +87,80 @@ export function ResultsPhase({ scenario }: Props) {
     return `${mins}m ${rem}s`
   }
 
-  // Simulate analysis steps loading
-  useEffect(() => {
-    const steps = [0, 1, 2, 3, 4]
-    steps.forEach((step, i) => {
-      setTimeout(() => setAnalysisStep(step), i * 600)
-    })
-  }, [])
+  const formatCardNumber = (val: string) => {
+    return val.replace(/\D/g, '').substring(0, 16).replace(/(.{4})/g, '$1 ').trim()
+  }
 
-  // Request AI Evaluation report
+  const formatExpiry = (val: string) => {
+    const digits = val.replace(/\D/g, '').substring(0, 4)
+    if (digits.length >= 3) return digits.substring(0, 2) + '/' + digits.substring(2)
+    return digits
+  }
+
+  const isFormValid =
+    cardName.trim().length > 2 &&
+    cardNumber.replace(/\s/g, '').length === 16 &&
+    expiry.length === 5 &&
+    cvv.length >= 3
+
+  const handlePay = () => {
+    // Lock in the certificate data at the moment of payment
+    const holderName = cardName.trim() || 'Safety Professional'
+    const payload = {
+      holderName,
+      scenarioTitle: scenario.title,
+      score: overallScore,
+      issuedDate,
+      expiryDate,
+      issuer: 'ClumsAI Certification Authority',
+      standard: 'OSHA 29 CFR 1910',
+    }
+    const id = btoa(JSON.stringify(payload)).replace(/[^a-zA-Z0-9]/g, '').substring(0, 40)
+    const url = `${window.location.origin}/certificate/${id}`
+
+    setLockedCert({ holderName, certId: id, certUrl: url })
+    setModalStep('processing')
+
+    setTimeout(() => {
+      setModalStep('certificate')
+    }, 2400)
+  }
+
+  const handleCopy = () => {
+    if (!lockedCert) return
+    navigator.clipboard.writeText(lockedCert.certUrl).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  const openModal = () => {
+    setCardName('')
+    setCardNumber('')
+    setExpiry('')
+    setCvv('')
+    setLockedCert(null)
+    setModalStep('payment_form')
+    setShowModal(true)
+  }
+
+  // Spinner animation via useEffect
+  useEffect(() => {
+    if (modalStep !== 'processing' || !spinnerRef.current) return
+    let angle = 0
+    let raf: number
+    const tick = () => {
+      angle = (angle + 4) % 360
+      if (spinnerRef.current) {
+        spinnerRef.current.style.transform = `rotate(${angle}deg)`
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [modalStep])
+
+  // AI Evaluation
   useEffect(() => {
     let isMounted = true
     async function fetchAiReport() {
@@ -119,554 +205,990 @@ export function ResultsPhase({ scenario }: Props) {
     totalHazards, decisionCorrect, quizScore, elapsedSeconds,
   ])
 
-  const ANALYSIS_STEPS = [
-    { label: 'Parsing behavioral telemetry', icon: Activity },
-    { label: 'Mapping hazard recognition patterns', icon: Eye },
-    { label: 'Cross-referencing OSHA compliance database', icon: ShieldCheck },
-    { label: 'Generating performance debrief', icon: Bot },
-    { label: 'Certification eligibility check complete', icon: BadgeCheck },
-  ]
-
   return (
-    <div style={{ maxWidth: 920, margin: '0 auto', padding: '32px 24px 80px' }}>
+    <div style={{ maxWidth: 860, margin: '0 auto', padding: '32px 24px 80px' }}>
+
       {/* ── Score Hero Banner ── */}
       <div
         style={{
-          borderRadius: 20,
-          padding: '32px',
-          background: passed
-            ? 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)'
-            : 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)',
-          border: `1px solid ${passed ? 'rgba(16,185,129,0.3)' : 'rgba(249,115,22,0.3)'}`,
+          borderRadius: 18,
+          padding: '28px 30px',
+          background: '#ffffff',
+          border: '1px solid #eef2f6',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
-          gap: 24,
-          marginBottom: 28,
-          position: 'relative',
-          overflow: 'hidden',
+          gap: 20,
+          marginBottom: 20,
         }}
       >
-        {/* Decorative background orb */}
-        <div
-          style={{
-            position: 'absolute', right: -40, top: -40,
-            width: 200, height: 200, borderRadius: '50%',
-            background: passed ? 'rgba(16,185,129,0.08)' : 'rgba(249,115,22,0.08)',
-            pointerEvents: 'none',
-          }}
-        />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20, position: 'relative' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div
             style={{
-              width: 72, height: 72, borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: passed ? 'rgba(16,185,129,0.15)' : 'rgba(249,115,22,0.15)',
-              border: `2px solid ${passed ? '#10b981' : '#f97316'}`,
+              width: 52,
+              height: 52,
+              borderRadius: 14,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: passed ? 'rgba(22,163,74,0.1)' : 'rgba(249,115,22,0.1)',
+              color: passed ? '#16a34a' : '#ea580c',
             }}
           >
-            {passed ? <Award size={36} color="#10b981" /> : <AlertTriangle size={36} color="#f97316" />}
+            <Award size={28} />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
               <span
                 style={{
-                  padding: '3px 12px', borderRadius: 999,
-                  fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em',
-                  background: passed ? '#10b981' : '#f97316', color: '#ffffff',
+                  padding: '2px 10px',
+                  borderRadius: 999,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  background: passed ? 'rgba(22,163,74,0.1)' : 'rgba(249,115,22,0.1)',
+                  color: passed ? '#16a34a' : '#ea580c',
                 }}
               >
-                {passed ? '✓ Training Passed' : 'Training Incomplete'}
+                {passed ? 'Assessment Passed' : 'Training Incomplete'}
               </span>
-              <span style={{ fontSize: 12, color: '#64748b' }}>
-                Min. required: {scenario.assessment.passingScore}%
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                Required: {scenario.assessment.passingScore}%
               </span>
             </div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 4px', color: '#0f172a' }}>
-              {passed ? 'Safety Certification Achieved' : 'Additional Training Required'}
+            <h1 style={{ fontSize: 20, fontWeight: 800, margin: '0 0 2px', color: '#0f172a' }}>
+              {passed ? 'Certification Performance Verified' : 'Refresher Required'}
             </h1>
-            <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
-              {scenario.title} · Comprehensive Training Performance Report
+            <p style={{ margin: 0, color: '#64748b', fontSize: 12 }}>
+              {scenario.title} · Compliance Performance Report
             </p>
           </div>
         </div>
 
-        <div style={{ textAlign: 'right', position: 'relative' }}>
-          <div style={{ fontSize: 56, fontWeight: 900, lineHeight: 1, color: passed ? '#10b981' : '#f97316' }}>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 48, fontWeight: 900, lineHeight: 1, color: passed ? '#16a34a' : '#ea580c' }}>
             {overallScore}%
           </div>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Final Score
+          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Composite Score
           </div>
         </div>
       </div>
 
       {/* ── Metric Breakdown Grid ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 28 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
         {[
-          {
-            icon: Eye, color: '#38bdf8',
-            label: 'Hazard Detection', bg: 'rgba(56,189,248,0.08)',
-            value: `${detectedHazards.length} / ${totalHazards}`,
-            sub: `${hazardScore}% identification rate`,
-          },
-          {
-            icon: ShieldCheck, color: decisionCorrect ? '#10b981' : '#ef4444',
-            label: 'Critical Decision', bg: decisionCorrect ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
-            value: decisionCorrect ? 'Compliant' : 'Needs Review',
-            sub: decisionCorrect ? 'Correct response at critical moment' : 'Decision violated safety protocol',
-          },
-          {
-            icon: FileCheck, color: '#a855f7',
-            label: 'Knowledge Quiz', bg: 'rgba(168,85,247,0.08)',
-            value: `${quizCorrectCount} / ${quizTotalCount}`,
-            sub: `${quizScore}% comprehension`,
-          },
-          {
-            icon: Clock, color: '#f59e0b',
-            label: 'Completion Time', bg: 'rgba(245,158,11,0.08)',
-            value: formatTime(elapsedSeconds),
-            sub: `Target: ${scenario.estimatedDuration}m`,
-          },
+          { icon: Eye, label: 'Hazard Detection', value: `${detectedHazards.length} / ${totalHazards}`, sub: `${hazardScore}% recognition` },
+          { icon: ShieldCheck, label: 'Decision Checkpoint', value: decisionCorrect ? 'Compliant' : 'Review Needed', sub: decisionCorrect ? 'Standard procedure followed' : 'Safety deviation recorded' },
+          { icon: FileCheck, label: 'Knowledge Quiz', value: `${quizCorrectCount} / ${quizTotalCount}`, sub: `${quizScore}% score` },
+          { icon: Clock, label: 'Session Time', value: formatTime(elapsedSeconds), sub: `Target: ${scenario.estimatedDuration}m` },
         ].map((m) => (
           <div
             key={m.label}
             style={{
               background: '#ffffff',
-              border: '1px solid #f1f5f9',
+              border: '1px solid #eef2f6',
               borderRadius: 14,
-              padding: '18px 20px',
-              boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+              padding: '16px 18px',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#64748b', fontSize: 12, marginBottom: 10 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: m.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <m.icon size={15} color={m.color} />
-              </div>
-              {m.label}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#64748b', fontSize: 11, fontWeight: 600, marginBottom: 8 }}>
+              <m.icon size={14} color="#ea580c" />
+              <span>{m.label}</span>
             </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: m.color }}>{m.value}</div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>{m.sub}</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{m.value}</div>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{m.sub}</div>
           </div>
         ))}
       </div>
 
-      {/* ── AI Training Analysis ── */}
+      {/* ── AI Analysis Summary ── */}
       <div
         style={{
           background: '#ffffff',
-          border: '1px solid #f1f5f9',
+          border: '1px solid #eef2f6',
           borderRadius: 18,
-          padding: '24px 28px',
-          marginBottom: 28,
-          boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+          padding: '22px 24px',
+          marginBottom: 20,
+          boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #0f172a, #1e293b)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Sparkles size={18} color="#f97316" />
-          </div>
-          <div>
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0f172a' }}>AI Training Analysis</h3>
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>Behavioral · Procedural · Compliance Assessment</span>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <Sparkles size={16} color="#ea580c" />
+          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#0f172a' }}>AI Training Debrief</h3>
         </div>
-
-        {/* Analysis Steps Progress */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-          {ANALYSIS_STEPS.map((step, i) => (
-            <div
-              key={i}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                opacity: analysisStep >= i ? 1 : 0.3,
-                transition: 'opacity 0.5s ease',
-              }}
-            >
-              <div
-                style={{
-                  width: 24, height: 24, borderRadius: 6,
-                  background: analysisStep > i
-                    ? 'rgba(16,185,129,0.12)'
-                    : analysisStep === i
-                    ? 'rgba(249,115,22,0.12)'
-                    : '#f1f5f9',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                {analysisStep > i ? (
-                  <CheckCircle size={14} color="#10b981" />
-                ) : (
-                  <step.icon size={13} color={analysisStep === i ? '#f97316' : '#94a3b8'} />
-                )}
-              </div>
-              <span style={{ fontSize: 13, color: analysisStep >= i ? '#334155' : '#cbd5e1', fontWeight: analysisStep === i ? 600 : 400 }}>
-                {step.label}
-              </span>
-              {analysisStep === i && analysisStep < ANALYSIS_STEPS.length - 1 && (
-                <div
-                  style={{
-                    marginLeft: 'auto',
-                    width: 16, height: 16,
-                    borderRadius: '50%',
-                    border: '2px solid #f97316',
-                    borderTopColor: 'transparent',
-                    animation: 'spin 0.8s linear infinite',
-                  }}
-                />
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* AI Evaluation Text */}
         <div
           style={{
             background: '#f8fafc',
             borderRadius: 12,
-            border: '1px solid #e2e8f0',
-            padding: '18px 20px',
-            fontSize: 14,
-            lineHeight: 1.7,
+            border: '1px solid #edf2f7',
+            padding: '16px 18px',
+            fontSize: 13,
+            lineHeight: 1.6,
             color: '#334155',
           }}
         >
           {loadingAi ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#94a3b8' }}>
-              <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #f97316', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
-              <span>Generating comprehensive behavioral debrief...</span>
-            </div>
+            <span style={{ color: '#94a3b8' }}>Synthesizing compliance evaluation...</span>
           ) : aiEvaluation ? (
             <div style={{ whiteSpace: 'pre-line' }}>{aiEvaluation}</div>
           ) : (
-            <div>
-              {passed ? (
-                <p style={{ margin: 0 }}>
-                  <strong style={{ color: '#10b981' }}>Outstanding compliance demonstrated</strong> for {scenario.title}. You identified critical hazards and adhered to required safety controls. Key highlight: {scenario.positiveCase?.description || 'All safety protocols executed correctly.'}
-                </p>
-              ) : (
-                <p style={{ margin: 0 }}>
-                  <strong style={{ color: '#ef4444' }}>Safety deficiencies detected</strong> during {scenario.title}. Required procedure: {scenario.positiveCase?.description || 'Follow mandatory risk mitigation procedures.'}. We recommend replaying the scenario.
-                </p>
-              )}
-            </div>
+            <p style={{ margin: 0 }}>
+              {passed
+                ? `Standard safety compliance verified for ${scenario.title}. All required OSHA controls were correctly identified and executed.`
+                : 'Safety deviations were identified during the simulation. Review standard operating protocols and retake the module.'}
+            </p>
           )}
         </div>
       </div>
 
-      {/* ── License / Certification Section ── */}
+      {/* ── Certificate Access Card ── */}
       <div
         style={{
           borderRadius: 18,
           overflow: 'hidden',
-          border: passed ? '1px solid rgba(249,115,22,0.3)' : '1px solid #e2e8f0',
-          marginBottom: 28,
+          border: '1px solid #eef2f6',
+          marginBottom: 24,
+          background: '#ffffff',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
         }}
       >
-        {/* Certificate Preview */}
+        {/* Top bar */}
         <div
           style={{
-            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
-            padding: '28px 32px',
-            position: 'relative',
-            overflow: 'hidden',
+            background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+            padding: '20px 28px',
           }}
         >
-          {/* Decorative elements */}
-          <div style={{ position: 'absolute', top: -30, right: -30, width: 120, height: 120, borderRadius: '50%', border: '1px solid rgba(249,115,22,0.2)', pointerEvents: 'none' }} />
-          <div style={{ position: 'absolute', top: -10, right: -10, width: 70, height: 70, borderRadius: '50%', border: '1px solid rgba(249,115,22,0.15)', pointerEvents: 'none' }} />
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, position: 'relative' }}>
-            <div style={{ width: 56, height: 56, borderRadius: 14, background: 'rgba(249,115,22,0.2)', border: '2px solid rgba(249,115,22,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Award size={28} color="#f97316" />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 10,
+                  background: 'rgba(255,255,255,0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Shield size={20} color="#ffffff" />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  ClumsAI Verified Credential
+                </div>
+                <h3 style={{ fontSize: 15, fontWeight: 800, margin: '2px 0 0', color: '#ffffff' }}>
+                  {scenario.title}
+                </h3>
+              </div>
             </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11, color: '#f97316', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
-                SafeGuard AI · Official Training Certificate
-              </div>
-              <h3 style={{ fontSize: 18, fontWeight: 800, color: '#ffffff', margin: '0 0 4px' }}>
-                {scenario.title}
-              </h3>
-              <div style={{ fontSize: 13, color: '#64748b' }}>
-                OSHA Compliance Training · Issued {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-              </div>
-            </div>
-            {passed ? (
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 28, fontWeight: 900, color: '#f97316' }}>{overallScore}%</div>
-                <div style={{ fontSize: 10, color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Score</div>
-              </div>
-            ) : (
-              <div style={{ padding: '6px 14px', borderRadius: 999, background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)' }}>
-                <span style={{ fontSize: 12, color: '#f97316', fontWeight: 700 }}>Retake Required</span>
-              </div>
+            {passed && (
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: '#ffffff',
+                  background: 'rgba(255,255,255,0.2)',
+                  padding: '4px 12px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(255,255,255,0.3)',
+                }}
+              >
+                Eligible
+              </span>
             )}
           </div>
         </div>
 
-        {/* License Access Panel */}
-        <div style={{ background: '#ffffff', padding: '24px 32px' }}>
+        {/* Body */}
+        <div style={{ padding: '20px 28px' }}>
           {passed ? (
-            <>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <BadgeCheck size={18} color="#10b981" />
-                    <span style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>You've Earned Your Certificate!</span>
-                  </div>
-                  <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6, margin: '0 0 16px' }}>
-                    Your official SafeGuard AI safety training certificate is ready. Download and share it as verified proof of OSHA compliance training completion.
-                  </p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-                    {['OSHA Compliant', 'PDF + Verifiable', 'Employer Ready', 'QR Authenticated'].map((tag) => (
-                      <span key={tag} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 999, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', color: '#059669', fontWeight: 600 }}>
-                        ✓ {tag}
-                      </span>
-                    ))}
-                  </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>
+                  Official OSHA Verified Certificate
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>
+                  PDF format · Unique credential ID · Employer verifiable online
                 </div>
               </div>
-
-              {/* Paywall CTA */}
-              <div
+              <button
+                onClick={openModal}
                 style={{
-                  borderRadius: 14,
-                  border: '1px solid rgba(249,115,22,0.2)',
-                  background: 'linear-gradient(135deg, rgba(249,115,22,0.04) 0%, rgba(234,88,12,0.02) 100%)',
-                  padding: '18px 20px',
+                  padding: '10px 22px',
+                  borderRadius: 999,
+                  background: 'linear-gradient(135deg, #f97316, #ea580c)',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 16,
-                  flexWrap: 'wrap',
+                  gap: 8,
+                  boxShadow: '0 4px 12px rgba(249,115,22,0.25)',
                 }}
               >
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>
-                    Download Official Certificate
-                  </div>
-                  <div style={{ fontSize: 12, color: '#94a3b8' }}>
-                    PDF format · Includes QR verification code · Lifetime access
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 20, fontWeight: 900, color: '#0f172a' }}>$9.99</div>
-                    <div style={{ fontSize: 10, color: '#94a3b8', textDecoration: 'line-through' }}>$24.99</div>
-                  </div>
-                  <button
-                    onClick={() => setShowPaywall(true)}
-                    style={{
-                      padding: '12px 22px',
-                      borderRadius: 12,
-                      background: 'linear-gradient(135deg, #f97316, #ea580c)',
-                      color: '#ffffff',
-                      border: 'none',
-                      fontSize: 13,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      boxShadow: '0 4px 16px rgba(249,115,22,0.35)',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    <Download size={14} /> Get Certificate
-                  </button>
-                </div>
-              </div>
-            </>
+                <Download size={14} />
+                <span>Get Certificate · $9.99</span>
+              </button>
+            </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Lock size={20} color="#94a3b8" />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#334155', marginBottom: 4 }}>
-                  Certificate Locked — Minimum Score Required: {scenario.assessment.passingScore}%
-                </div>
-                <div style={{ fontSize: 13, color: '#94a3b8' }}>
-                  Retake the training to unlock your downloadable safety certificate.
-                </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+              <div style={{ fontSize: 13, color: '#64748b' }}>
+                A passing score of {scenario.assessment.passingScore}% is required to unlock certification.
               </div>
               <button
                 onClick={() => { reset(); setPhase('idle') }}
                 style={{
-                  padding: '10px 20px',
-                  borderRadius: 10,
-                  background: '#f1f5f9',
+                  padding: '8px 18px',
+                  borderRadius: 999,
+                  background: '#f8fafc',
                   border: '1px solid #e2e8f0',
-                  color: '#334155',
-                  fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                  whiteSpace: 'nowrap',
+                  color: '#0f172a',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
                 }}
               >
-                Retake Training
+                Retake Module
               </button>
             </div>
           )}
         </div>
       </div>
 
-      {/* ── Action Row ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, paddingTop: 16, borderTop: '1px solid #f1f5f9' }}>
+      {/* ── Action Buttons ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <button
           onClick={() => { reset(); setPhase('idle') }}
           style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '11px 20px', borderRadius: 10,
-            background: '#f8fafc', border: '1px solid #e2e8f0',
-            color: '#475569', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 18px',
+            borderRadius: 999,
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            color: '#475569',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer',
           }}
         >
-          <RotateCcw size={15} /> Retake Simulation
+          <RotateCcw size={14} />
+          <span>Retake Session</span>
         </button>
 
         <Link
           href="/dashboard/training"
           style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '11px 22px', borderRadius: 10,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 22px',
+            borderRadius: 999,
             background: 'linear-gradient(135deg, #f97316, #ea580c)',
-            color: '#ffffff', fontSize: 14, fontWeight: 700,
+            color: '#ffffff',
+            fontSize: 13,
+            fontWeight: 700,
             textDecoration: 'none',
-            boxShadow: '0 4px 16px rgba(249,115,22,0.3)',
+            boxShadow: '0 4px 12px rgba(249,115,22,0.25)',
           }}
         >
-          Training Catalog <ArrowRight size={15} />
+          <span>Training Catalog</span>
+          <ArrowRight size={14} />
         </Link>
       </div>
 
-      {/* ── License Payment Modal ── */}
-      {showPaywall && (
+      {/* ──────────────────────────────────────────
+          PAYMENT MODAL
+      ────────────────────────────────────────── */}
+      {showModal && (
         <div
           style={{
-            position: 'fixed', inset: 0, zIndex: 300,
-            background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(12px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+            position: 'fixed',
+            inset: 0,
+            zIndex: 300,
+            background: 'rgba(100,116,139,0.35)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
           }}
         >
-          <div
-            style={{
-              width: '100%', maxWidth: 480,
-              background: '#ffffff', borderRadius: 24,
-              boxShadow: '0 32px 80px rgba(0,0,0,0.5)',
-              overflow: 'hidden',
-            }}
-          >
-            {/* Modal Header */}
+          {/* ── STEP 1: Payment Form ── */}
+          {modalStep === 'payment_form' && (
             <div
               style={{
-                background: 'linear-gradient(135deg, #0f172a, #1e293b)',
-                padding: '24px 28px',
-                position: 'relative',
+                width: '100%',
+                maxWidth: 480,
+                background: '#ffffff',
+                borderRadius: 24,
+                boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
+                overflow: 'hidden',
               }}
             >
-              <button
-                onClick={() => setShowPaywall(false)}
+              {/* Header */}
+              <div
                 style={{
-                  position: 'absolute', top: 16, right: 16,
-                  width: 32, height: 32, borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.1)',
-                  border: 'none', cursor: 'pointer', color: '#ffffff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                  padding: '24px 28px',
+                  position: 'relative',
                 }}
               >
-                <X size={16} />
-              </button>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(249,115,22,0.2)', border: '2px solid rgba(249,115,22,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Award size={22} color="#f97316" />
+                <button
+                  onClick={() => setShowModal(false)}
+                  style={{
+                    position: 'absolute',
+                    top: 14,
+                    right: 14,
+                    width: 30,
+                    height: 30,
+                    borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.2)',
+                    border: '1px solid rgba(255,255,255,0.3)',
+                    cursor: 'pointer',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <X size={15} />
+                </button>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 12,
+                      background: 'rgba(255,255,255,0.2)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Shield size={22} color="#ffffff" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.75)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      ClumsAI Certification
+                    </div>
+                    <div style={{ fontSize: 17, fontWeight: 800, color: '#ffffff' }}>
+                      Complete Your Purchase
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: 11, color: '#f97316', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>SafeGuard AI Certificate</div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: '#ffffff' }}>Official Safety Certification</div>
+              </div>
+
+              <div style={{ padding: '24px 28px' }}>
+                {/* Summary box */}
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #e8f0fe',
+                    borderRadius: 14,
+                    padding: '16px 18px',
+                    marginBottom: 22,
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
+                    What you receive
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                    {[
+                      `Assessment verified: ${overallScore}% score on ${scenario.title}`,
+                      'Official PDF certificate with unique credential ID',
+                      'Shareable online verification link for employers',
+                      'Valid for 12 months from date of issue',
+                    ].map((item, idx) => (
+                      <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, fontSize: 12, color: '#334155' }}>
+                        <CheckCircle size={13} color="#16a34a" style={{ flexShrink: 0, marginTop: 1 }} />
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Price highlight */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '14px 18px',
+                    borderRadius: 12,
+                    background: '#fff7ed',
+                    border: '1px solid #fed7aa',
+                    marginBottom: 20,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 11, color: '#92400e', fontWeight: 600 }}>One-time certification fee</div>
+                    <div style={{ fontSize: 22, fontWeight: 900, color: '#ea580c', marginTop: 1 }}>$9.99</div>
+                  </div>
+                  <div
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: 999,
+                      background: 'rgba(249,115,22,0.12)',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: '#ea580c',
+                    }}
+                  >
+                    No subscription
+                  </div>
+                </div>
+
+                {/* Card form */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 13, marginBottom: 18 }}>
+                  <div>
+                    <label style={labelStyle}>Name on Card</label>
+                    <input
+                      type="text"
+                      value={cardName}
+                      onChange={(e) => setCardName(e.target.value)}
+                      placeholder="John Smith"
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Card Number</label>
+                    <input
+                      type="text"
+                      value={cardNumber}
+                      onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                      placeholder="1234 5678 9012 3456"
+                      maxLength={19}
+                      style={{ ...inputStyle, fontFamily: 'monospace', letterSpacing: '0.05em' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label style={labelStyle}>Expiry Date</label>
+                      <input
+                        type="text"
+                        value={expiry}
+                        onChange={(e) => setExpiry(formatExpiry(e.target.value))}
+                        placeholder="MM / YY"
+                        maxLength={5}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>CVV</label>
+                      <input
+                        type="password"
+                        value={cvv}
+                        onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').substring(0, 4))}
+                        placeholder="•••"
+                        maxLength={4}
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pay button */}
+                <button
+                  onClick={handlePay}
+                  disabled={!isFormValid}
+                  style={{
+                    width: '100%',
+                    padding: '14px',
+                    borderRadius: 999,
+                    border: 'none',
+                    background: isFormValid
+                      ? 'linear-gradient(135deg, #f97316, #ea580c)'
+                      : '#e2e8f0',
+                    color: isFormValid ? '#ffffff' : '#94a3b8',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: isFormValid ? 'pointer' : 'not-allowed',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    boxShadow: isFormValid ? '0 4px 16px rgba(249,115,22,0.35)' : 'none',
+                    marginBottom: 12,
+                    transition: 'background 0.2s, box-shadow 0.2s',
+                  }}
+                >
+                  <CreditCard size={16} />
+                  Pay $9.99 and Get Certificate
+                </button>
+
+                <div
+                  style={{
+                    textAlign: 'center',
+                    fontSize: 11,
+                    color: '#94a3b8',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 5,
+                  }}
+                >
+                  <Lock size={11} />
+                  Secured by 256-bit SSL encryption
                 </div>
               </div>
             </div>
+          )}
 
-            {/* Modal Body */}
-            <div style={{ padding: '24px 28px' }}>
-              {/* What's included */}
-              <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 12 }}>What's Included:</div>
-                {[
-                  { icon: BadgeCheck, text: 'Official PDF safety training certificate', color: '#10b981' },
-                  { icon: Star, text: `Score: ${overallScore}% — ${scenario.title}`, color: '#f97316' },
-                  { icon: ShieldCheck, text: 'OSHA compliance training verification', color: '#38bdf8' },
-                  { icon: Download, text: 'Instant download + shareable link', color: '#a855f7' },
-                  { icon: Sparkles, text: 'QR-authenticated employer-ready document', color: '#f59e0b' },
-                ].map((item) => (
-                  <div key={item.text} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid #f8fafc' }}>
-                    <item.icon size={15} color={item.color} />
-                    <span style={{ fontSize: 13, color: '#334155' }}>{item.text}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Pricing */}
+          {/* ── STEP 2: Processing ── */}
+          {modalStep === 'processing' && (
+            <div
+              style={{
+                width: '100%',
+                maxWidth: 360,
+                background: '#ffffff',
+                borderRadius: 24,
+                boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
+                padding: '52px 40px',
+                textAlign: 'center',
+              }}
+            >
               <div
                 style={{
-                  borderRadius: 14,
-                  border: '1px solid rgba(249,115,22,0.2)',
-                  background: 'rgba(249,115,22,0.04)',
-                  padding: '16px 18px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 16,
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: 12, color: '#94a3b8', textDecoration: 'line-through', marginBottom: 2 }}>Regular price: $24.99</div>
-                  <div style={{ fontSize: 22, fontWeight: 900, color: '#f97316' }}>$9.99 <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 400 }}>one-time</span></div>
-                </div>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: '#fef9c3', color: '#a16207' }}>
-                  60% OFF
-                </span>
-              </div>
-
-              {/* CTA */}
-              <button
-                onClick={() => {
-                  // In production this would open a payment processor
-                  alert('Payment integration coming soon! This would open Stripe / payment gateway.')
-                  setShowPaywall(false)
-                }}
-                style={{
-                  width: '100%',
-                  padding: '15px',
-                  borderRadius: 14,
-                  background: 'linear-gradient(135deg, #f97316, #ea580c)',
-                  color: '#ffffff',
-                  border: 'none',
-                  fontSize: 15,
-                  fontWeight: 800,
-                  cursor: 'pointer',
+                  width: 72,
+                  height: 72,
+                  borderRadius: '50%',
+                  background: '#fff7ed',
+                  border: '3px solid #fed7aa',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 10,
-                  boxShadow: '0 6px 24px rgba(249,115,22,0.4)',
-                  marginBottom: 10,
+                  margin: '0 auto 24px',
+                  position: 'relative',
                 }}
               >
-                <CreditCard size={16} /> Pay $9.99 & Download Certificate
-              </button>
-              <div style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                <Lock size={11} /> Secured by Stripe · 256-bit SSL encryption
+                {/* Animated arc via ref */}
+                <div
+                  ref={spinnerRef}
+                  style={{
+                    position: 'absolute',
+                    inset: -3,
+                    borderRadius: '50%',
+                    border: '3px solid transparent',
+                    borderTopColor: '#f97316',
+                    borderRightColor: '#f97316',
+                  }}
+                />
+                <CreditCard size={28} color="#f97316" />
+              </div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>
+                Processing Payment
+              </div>
+              <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
+                Verifying your details and generating your official credential...
               </div>
             </div>
-          </div>
+          )}
+
+          {/* ── STEP 3: Certificate ── */}
+          {modalStep === 'certificate' && lockedCert && (
+            <div
+              style={{
+                width: '100%',
+                maxWidth: 580,
+                background: '#ffffff',
+                borderRadius: 24,
+                boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
+                overflow: 'hidden',
+                maxHeight: '92vh',
+                overflowY: 'auto',
+              }}
+            >
+              {/* Certificate Header */}
+              <div
+                style={{
+                  background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                  padding: '28px 32px',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Decorative shapes */}
+                <div style={{ position: 'absolute', top: -40, right: -40, width: 130, height: 130, borderRadius: '50%', background: 'rgba(255,255,255,0.08)' }} />
+                <div style={{ position: 'absolute', bottom: -20, left: -20, width: 90, height: 90, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
+
+                <button
+                  onClick={() => setShowModal(false)}
+                  style={{
+                    position: 'absolute', top: 14, right: 14, zIndex: 2,
+                    width: 30, height: 30, borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.2)',
+                    border: '1px solid rgba(255,255,255,0.3)',
+                    cursor: 'pointer', color: '#ffffff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <X size={15} />
+                </button>
+
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <div
+                      style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: 12,
+                        background: 'rgba(255,255,255,0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Shield size={24} color="#ffffff" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.75)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                        ClumsAI
+                      </div>
+                      <div style={{ fontSize: 17, fontWeight: 900, color: '#ffffff' }}>
+                        Certificate of Completion
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      background: 'rgba(255,255,255,0.2)',
+                      border: '1px solid rgba(255,255,255,0.3)',
+                      borderRadius: 999, padding: '5px 12px',
+                    }}
+                  >
+                    <BadgeCheck size={13} color="#ffffff" />
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#ffffff' }}>Verified</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Certificate Body */}
+              <div style={{ padding: '30px 32px' }}>
+
+                {/* Success notice */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    background: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    borderRadius: 12,
+                    padding: '12px 16px',
+                    marginBottom: 24,
+                  }}
+                >
+                  <CheckCircle size={16} color="#16a34a" style={{ flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#15803d' }}>Payment successful</div>
+                    <div style={{ fontSize: 11, color: '#16a34a' }}>Your certificate has been generated and is ready to download</div>
+                  </div>
+                </div>
+
+                {/* Holder */}
+                <div style={{ textAlign: 'center', marginBottom: 26 }}>
+                  <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 8px', fontStyle: 'italic' }}>
+                    This is to certify that
+                  </p>
+                  <div
+                    style={{
+                      fontSize: 26,
+                      fontWeight: 900,
+                      color: '#0f172a',
+                      borderBottom: '2px solid #f97316',
+                      display: 'inline-block',
+                      paddingBottom: 6,
+                      marginBottom: 12,
+                      letterSpacing: '-0.01em',
+                    }}
+                  >
+                    {lockedCert.holderName}
+                  </div>
+                  <p style={{ fontSize: 12, color: '#64748b', margin: 0 }}>
+                    has successfully completed the required training and assessment for
+                  </p>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 800,
+                      color: '#0f172a',
+                      marginTop: 10,
+                      padding: '9px 20px',
+                      background: '#f8fafc',
+                      borderRadius: 10,
+                      border: '1px solid #eef2f6',
+                      display: 'inline-block',
+                    }}
+                  >
+                    {scenario.title}
+                  </div>
+                </div>
+
+                {/* Metadata grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 20 }}>
+                  {[
+                    { icon: Award, label: 'Assessment Score', value: `${overallScore}% — Passed` },
+                    { icon: CheckCircle, label: 'Compliance Standard', value: 'OSHA 29 CFR 1910' },
+                    { icon: Calendar, label: 'Date of Issue', value: issuedDate },
+                    { icon: Clock, label: 'Valid Until', value: expiryDate },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      style={{
+                        background: '#f8fafc',
+                        border: '1px solid #eef2f6',
+                        borderRadius: 10,
+                        padding: '13px 15px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: '#94a3b8',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.06em',
+                          marginBottom: 5,
+                        }}
+                      >
+                        <item.icon size={10} color="#ea580c" />
+                        {item.label}
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Credential ID */}
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #eef2f6',
+                    borderRadius: 10,
+                    padding: '13px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                    marginBottom: 14,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+                    <Hash size={14} color="#ea580c" style={{ flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Credential ID
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                          color: '#475569',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        SGA-{lockedCert.certId.toUpperCase()}
+                      </div>
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: '#15803d',
+                      background: '#f0fdf4',
+                      border: '1px solid #bbf7d0',
+                      padding: '3px 10px',
+                      borderRadius: 999,
+                      flexShrink: 0,
+                    }}
+                  >
+                    Authentic
+                  </span>
+                </div>
+
+                {/* Online verification link */}
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #eef2f6',
+                    borderRadius: 12,
+                    padding: '15px 16px',
+                    marginBottom: 20,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: '#475569',
+                      marginBottom: 10,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <ExternalLink size={12} color="#ea580c" />
+                    Online Verification Link
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div
+                      style={{
+                        flex: 1,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: '#64748b',
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 8,
+                        padding: '8px 12px',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {lockedCert.certUrl}
+                    </div>
+                    <button
+                      onClick={handleCopy}
+                      style={{
+                        padding: '8px 13px',
+                        borderRadius: 8,
+                        flexShrink: 0,
+                        background: copied ? '#f0fdf4' : '#ffffff',
+                        border: `1px solid ${copied ? '#bbf7d0' : '#e2e8f0'}`,
+                        color: copied ? '#15803d' : '#475569',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        transition: 'all 0.2s',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <Copy size={12} />
+                      {copied ? 'Copied!' : 'Copy'}
+                    </button>
+                    <a
+                      href={lockedCert.certUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        padding: '8px 13px',
+                        borderRadius: 8,
+                        flexShrink: 0,
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        color: '#475569',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <ExternalLink size={12} />
+                      Open
+                    </a>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    onClick={() => window.print()}
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      borderRadius: 999,
+                      border: 'none',
+                      background: 'linear-gradient(135deg, #f97316, #ea580c)',
+                      color: '#ffffff',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 7,
+                      boxShadow: '0 4px 14px rgba(249,115,22,0.3)',
+                    }}
+                  >
+                    <Download size={14} />
+                    Download PDF
+                  </button>
+                  <button
+                    onClick={() => setShowModal(false)}
+                    style={{
+                      padding: '12px 22px',
+                      borderRadius: 999,
+                      border: '1px solid #e2e8f0',
+                      background: '#ffffff',
+                      color: '#475569',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
-
-      {/* Spin animation keyframe */}
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
     </div>
   )
+}
+
+// Shared input styles
+const labelStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  color: '#475569',
+  display: 'block',
+  marginBottom: 6,
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '11px 14px',
+  borderRadius: 10,
+  border: '1px solid #e2e8f0',
+  fontSize: 13,
+  color: '#0f172a',
+  background: '#ffffff',
+  outline: 'none',
 }
