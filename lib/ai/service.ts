@@ -1,117 +1,5 @@
 import type { AIMessage, AIResponse, Scenario } from '@/types'
-
-// ─── Mock AI Responses for Forklift Scenario ──────────────────────────────────
-
-const MOCK_INTRO_RESPONSES: AIResponse[] = [
-  {
-    type: 'training_feedback',
-    message:
-      "Welcome to Forklift Blind Corner training. I'm your AI Safety Instructor. Before we run the simulation, watch the incident video carefully. Pay attention to what the worker does wrong — and why it could be fatal.",
-    severity: 'low',
-    nextAction: 'watch_negative_video',
-  },
-]
-
-const MOCK_AFTER_NEGATIVE_VIDEO: AIResponse[] = [
-  {
-    type: 'quiz_question',
-    message: "You just watched an unsafe scenario. What was the worker's critical mistake when approaching the intersection?",
-    options: [
-      'They were walking too slowly',
-      'They did not stop or check before entering the intersection',
-      'They were carrying too many items',
-      'They made eye contact with the forklift operator',
-    ],
-    correctOption: 1,
-    explanation:
-      'The worker failed to stop and check at the blind intersection. This is the fundamental error that makes blind corner incidents fatal.',
-  },
-]
-
-const MOCK_HAZARD_DETECTED: AIResponse = {
-  type: 'training_feedback',
-  message:
-    'Correct — you identified the moving forklift. Now look at the intersection ahead. Why is this location particularly dangerous?',
-  severity: 'low',
-  correct: true,
-  nextAction: 'identify_blind_corner',
-  explanation:
-    'The forklift is the active vehicle hazard, but the danger is amplified by the shelving unit that blocks visibility at the intersection.',
-}
-
-const MOCK_HAZARD_MISSED: AIResponse = {
-  type: 'hint',
-  message: "Look again. Something in this warehouse could enter your path unexpectedly. Pay attention to moving objects and obstructed sightlines.",
-  severity: 'medium',
-  correct: false,
-  hint: 'Focus on the far aisle. What type of industrial vehicle do you see?',
-}
-
-const MOCK_CORRECT_DECISION: AIResponse = {
-  type: 'training_feedback',
-  message:
-    "Excellent. You stopped, checked left and right, confirmed the forklift had passed, and proceeded safely. That is the correct stop-and-check procedure — every time, without exception.",
-  severity: 'low',
-  correct: true,
-  nextAction: 'watch_positive_video',
-}
-
-const MOCK_INCORRECT_DECISION: AIResponse = {
-  type: 'warning',
-  message:
-    "You entered the intersection without checking. In a real scenario, this decision could be fatal. The forklift weighs 3,000 kg and cannot stop instantly. Let's review why the check is non-negotiable.",
-  severity: 'high',
-  correct: false,
-  nextAction: 'explain_mistake',
-  explanation:
-    'A 3,000kg forklift traveling at 8 km/h has a stopping distance of approximately 4 meters. By the time you enter its path, the operator has no time to react.',
-}
-
-const MOCK_QUIZ_FEEDBACK_CORRECT: AIResponse = {
-  type: 'evaluation',
-  message: 'Correct. The stop-and-check procedure is the most critical habit in forklift zones.',
-  severity: 'low',
-  correct: true,
-}
-
-const MOCK_QUIZ_FEEDBACK_INCORRECT: AIResponse = {
-  type: 'evaluation',
-  message:
-    "That's not correct. Remember: in a warehouse with active forklifts, your safety depends entirely on consistent procedure — not assumptions.",
-  severity: 'medium',
-  correct: false,
-}
-
-const MOCK_PERFORMANCE_SUMMARY: AIResponse = {
-  type: 'summary',
-  message:
-    "Training complete. You demonstrated strong hazard recognition skills. Your key area for improvement is decision speed at blind intersections — remember that hesitation in the real environment could mean the difference between a near-miss and an incident. Keep practicing the stop-and-check behavior until it becomes automatic.",
-  severity: 'low',
-  nextAction: 'complete',
-}
-
-const MOCK_GENERAL_RESPONSES: AIResponse[] = [
-  {
-    type: 'explanation',
-    message:
-      'Pedestrian-forklift separation means using designated walkways that are physically separated from forklift routes. Floor markings, barriers, and signage are used to enforce this separation.',
-    severity: 'low',
-  },
-  {
-    type: 'training_feedback',
-    message:
-      "Good question. OSHA standard 1910.178(n)(4) requires that operators slow down and sound the horn at cross aisles and other locations where vision is obstructed. Pedestrians should also treat these zones as stop-and-check points.",
-    severity: 'low',
-  },
-  {
-    type: 'hint',
-    message:
-      'Think about what happens at this intersection from both perspectives: the worker walking and the forklift operator driving. What does each party NOT know?',
-    severity: 'low',
-  },
-]
-
-// ─── AI Service ───────────────────────────────────────────────────────────────
+import { getAfterVideoQuestion } from '@/lib/scenarios/data'
 
 export interface ChatContext {
   scenario: Scenario
@@ -154,34 +42,37 @@ function buildSystemPrompt(context: ChatContext): string {
   const hazardList = scenario.hazards.map((h) => `- ${h.label}: ${h.description}`).join('\n')
   const objectives = scenario.learningObjectives.join('\n- ')
 
-  return `You are a workplace safety training instructor for SafeGuard AI. You are currently running a training session for the following scenario:
+  return `You are a certified workplace safety training instructor for SafeGuard AI. You are currently conducting a high-fidelity interactive training session for the following scenario:
 
-SCENARIO: ${scenario.title}
+SCENARIO TITLE: ${scenario.title}
+CATEGORY: ${scenario.category}
 ENVIRONMENT: ${scenario.environment}
-SEVERITY: ${scenario.severity}
+SEVERITY LEVEL: ${scenario.severity}
+OVERVIEW: ${scenario.description}
 
-HAZARDS:
+ACTIVE HAZARDS:
 ${hazardList}
 
 LEARNING OBJECTIVES:
 - ${objectives}
 
-NEGATIVE BEHAVIOR (what NOT to do): ${scenario.negativeCase.actions.join(', ')}
-POSITIVE BEHAVIOR (correct procedure): ${scenario.positiveCase.actions.join(', ')}
+CRITICAL NEGATIVE ACTIONS (What caused the incident): ${scenario.negativeCase.actions.join(', ')} - ${scenario.negativeCase.description}
+COMPLIANT STANDARD PROCEDURE: ${scenario.positiveCase.actions.join(', ')} - ${scenario.positiveCase.description}
 
-CURRENT TRAINING PHASE: ${context.phase}
+CURRENT DRILL PHASE: ${context.phase}
 
 Your role:
-- Guide the employee through safety training for this specific scenario
-- Reference actual scenario hazards and context in your responses
-- Ask probing questions that help employees discover hazards themselves
-- Provide clear, factual feedback based on the scenario
-- Do NOT invent regulatory claims beyond what is provided
-- Do NOT go off-topic — stay focused on this scenario
-- Use a calm, professional, instructional enterprise EHS tone
-- STRICT RULE: NEVER use emojis, emoticons, or conversational filler slang. Maintain rigorous OSHA/EHS industrial safety standard language at all times.
+- Guide the employee through safety training for this EXACT scenario (${scenario.title})
+- Directly reference the scenario's hazards, environmental constraints, and OSHA/NFPA regulations
+- If the scenario is an industrial fire, focus on RACE protocol, alarm pull, Class B extinguisher (CO2/dry chemical), fire doors, and low-crawl smoke evacuation
+- If the scenario is construction fall, focus on OSHA 1926.502, 100% continuous dual-lanyard tie-off, scaffolding board pinning, and Stop Work Authority
+- If the scenario is warehouse/forklift, focus on OSHA 1910.178, blind corner stop-and-check, and pedestrian-vehicle separation
+- If the scenario is chemical, focus on SDS Class 8, Level B PPE, acid neutralizers, and upwind isolation
+- If the scenario is electrical LOTO, focus on OSHA 1910.147, 6-step zero-energy isolation, multimeter verification, and padlock hasps
+- Use a professional, authoritative, instructional enterprise EHS tone
+- STRICT RULE: NEVER use emojis, emoticons, or casual slang. Maintain rigorous OSHA/EHS industrial safety standard language at all times.
 
-Always respond with a JSON object matching this structure:
+Always respond with a valid JSON object matching this structure:
 {
   "type": "training_feedback" | "hint" | "quiz_question" | "evaluation" | "summary" | "explanation" | "warning",
   "message": "Your response here",
@@ -190,35 +81,151 @@ Always respond with a JSON object matching this structure:
   "nextAction": "optional next step for the UI",
   "explanation": "optional deeper explanation",
   "hint": "optional hint text",
-  "options": ["option A", "option B", ...] if type is quiz_question,
-  "correctOption": 0 (index) if type is quiz_question
+  "options": ["option A", "option B"] (optional),
+  "correctOption": 0 (optional)
 }`
 }
 
 function getMockResponse(userMessage: string, context: ChatContext): AIResponse {
   const lower = userMessage.toLowerCase()
+  const { scenario } = context
+  const cat = scenario.category
+  const isFire = scenario.id.includes('fire') || cat === 'fire_safety'
+  const isFall = scenario.id.includes('fall') || cat === 'construction_safety'
+  const isChemical = scenario.id.includes('chemical') || cat === 'chemical_safety'
+  const isLOTO = scenario.id.includes('loto') || cat === 'electrical_safety'
+  const isForklift = scenario.id.includes('forklift') || cat === 'warehouse_safety'
 
-  if (lower.includes('forklift') && (lower.includes('hazard') || lower.includes('danger') || lower.includes('risk'))) {
-    return MOCK_HAZARD_DETECTED
-  }
-  if (lower.includes('blind') || lower.includes('corner') || lower.includes('intersection')) {
-    return {
-      type: 'explanation',
-      message:
-        'The blind intersection is where the shelving unit blocks the line of sight. Neither you nor the forklift operator can see around it until you are already in the danger zone — which is why you must stop and check every time.',
-      severity: 'medium',
-      nextAction: 'identify_blind_corner',
+  // Fire-specific queries
+  if (isFire) {
+    if (lower.includes('extinguisher') || lower.includes('water') || lower.includes('class')) {
+      return {
+        type: 'explanation',
+        message:
+          'Industrial solvent and paint fires are Class B flammable liquid hazards. Never apply water on Class B fires as it causes violent steam explosions and spreads flaming liquid. Use CO₂ or ABC dry chemical extinguishers only.',
+        severity: 'medium',
+      }
+    }
+    if (lower.includes('alarm') || lower.includes('pull') || lower.includes('race')) {
+      return {
+        type: 'training_feedback',
+        message:
+          'Under the RACE protocol (Rescue, Alarm, Contain, Evacuate), immediately pulling the manual alarm station alerts facility personnel and emergency responders before any suppression attempt.',
+        severity: 'low',
+        correct: true,
+      }
+    }
+    if (lower.includes('smoke') || lower.includes('crawl') || lower.includes('breath')) {
+      return {
+        type: 'explanation',
+        message:
+          'Toxic smoke and superheated gases rise to ceiling level. Maintaining a low-crawl position keeps your airway in the breathable zone closest to the floor where ambient oxygen is highest.',
+        severity: 'low',
+      }
     }
   }
-  if (lower.includes('stop') || lower.includes('check') || lower.includes('correct') || lower.includes('safe')) {
-    return MOCK_CORRECT_DECISION
-  }
-  if (lower.includes('wrong') || lower.includes('mistake') || lower.includes('error') || lower.includes('fail')) {
-    return MOCK_INCORRECT_DECISION
+
+  // Construction Fall-specific queries
+  if (isFall) {
+    if (lower.includes('harness') || lower.includes('lanyard') || lower.includes('tie')) {
+      return {
+        type: 'training_feedback',
+        message:
+          'OSHA 1926.502 mandates 100% continuous tie-off above 6 feet (1.8m). When moving along scaffolding, the dual-lanyard leapfrog technique ensures you are connected to a 5,000-lb rated anchor at all times.',
+        severity: 'low',
+        correct: true,
+      }
+    }
+    if (lower.includes('plank') || lower.includes('board') || lower.includes('loose')) {
+      return {
+        type: 'warning',
+        message:
+          'Unpinned or cantilever scaffold planks are tipping hazards. Never step onto an unsecured plank. Immediately apply a Danger tag and notify the designated competent person.',
+        severity: 'high',
+      }
+    }
+    if (lower.includes('coworker') || lower.includes('stop') || lower.includes('authority')) {
+      return {
+        type: 'training_feedback',
+        message:
+          'Every employee possesses Stop Work Authority. When observing an unclipped coworker at height, issue an immediate verbal directive to step back and attach both snap hooks.',
+        severity: 'low',
+        correct: true,
+      }
+    }
   }
 
-  // Return a random general response
-  return MOCK_GENERAL_RESPONSES[Math.floor(Math.random() * MOCK_GENERAL_RESPONSES.length)]
+  // Chemical-specific queries
+  if (isChemical) {
+    if (lower.includes('ppe') || lower.includes('respirator') || lower.includes('acid')) {
+      return {
+        type: 'explanation',
+        message:
+          'Concentrated corrosive acid releases toxic vapors. Approach only from upwind positions and ensure Level B respiratory PPE is fully donned prior to containment perimeter setup.',
+        severity: 'medium',
+      }
+    }
+  }
+
+  // Electrical-specific queries
+  if (isLOTO) {
+    if (lower.includes('meter') || lower.includes('voltage') || lower.includes('padlock')) {
+      return {
+        type: 'explanation',
+        message:
+          'OSHA 1910.147 requires physical padlocking with individual keys and three-point multimeter testing (Live-Dead-Live) to confirm a zero-energy state before contacting busbars.',
+        severity: 'medium',
+      }
+    }
+  }
+
+  // Forklift queries
+  if (isForklift) {
+    if (lower.includes('forklift') || lower.includes('vehicle') || lower.includes('speed')) {
+      return {
+        type: 'training_feedback',
+        message:
+          'A loaded 3,000kg forklift traveling at 8 km/h requires up to 4 meters to come to a complete stop. Never assume the operator has visual contact around racking corners.',
+        severity: 'low',
+        correct: true,
+      }
+    }
+    if (lower.includes('blind') || lower.includes('corner') || lower.includes('intersection')) {
+      return {
+        type: 'explanation',
+        message:
+          'Blind intersections created by storage shelving eliminate line-of-sight for both pedestrians and operators. OSHA 1910.178 requires stopping and checking both directions prior to crossing.',
+        severity: 'low',
+      }
+    }
+  }
+
+  // Generic contextual responses based on active scenario objectives
+  if (lower.includes('stop') || lower.includes('check') || lower.includes('correct') || lower.includes('safe') || lower.includes('help')) {
+    return {
+      type: 'training_feedback',
+      message: `Confirmed. Standard operating procedure for ${scenario.title}: ${scenario.positiveCase.description}. Adhere to all outlined safety controls.`,
+      severity: 'low',
+      correct: true,
+    }
+  }
+
+  if (lower.includes('wrong') || lower.includes('hazard') || lower.includes('danger') || lower.includes('risk')) {
+    const primaryHazard = scenario.hazards[0]
+    return {
+      type: 'warning',
+      message: `Critical hazard in this area: ${primaryHazard?.label ?? 'Active site hazard'}. ${primaryHazard?.description ?? 'Follow designated PPE and isolation protocols.'}`,
+      severity: 'high',
+      correct: false,
+    }
+  }
+
+  // Default scenario-tailored instructor advice
+  return {
+    type: 'training_feedback',
+    message: `In ${scenario.title}, ensure compliance with key learning objectives: ${scenario.learningObjectives[0] || scenario.description}`,
+    severity: 'low',
+  }
 }
 
 // ─── Main AI Service Function ─────────────────────────────────────────────────
@@ -227,8 +234,7 @@ export async function getAIResponse(userMessage: string, context: ChatContext): 
   const isMock = process.env.MOCK_AI === 'true' || !process.env.GROQ_API_KEY
 
   if (isMock) {
-    // Simulate a small delay for realism
-    await new Promise((r) => setTimeout(r, 400 + Math.random() * 600))
+    await new Promise((r) => setTimeout(r, 400 + Math.random() * 500))
     return getMockResponse(userMessage, context)
   }
 
@@ -242,7 +248,6 @@ export async function getAIResponse(userMessage: string, context: ChatContext): 
     const raw = await callGroqAPI(messages, systemPrompt)
     const parsed = JSON.parse(raw) as AIResponse
 
-    // Validate required fields
     if (!parsed.type || !parsed.message) {
       throw new Error('Invalid AI response structure')
     }
@@ -250,36 +255,59 @@ export async function getAIResponse(userMessage: string, context: ChatContext): 
     return parsed
   } catch (error) {
     console.error('AI service error:', error)
-    // Graceful fallback
     return {
       type: 'training_feedback',
-      message:
-        'I encountered a technical issue, but your training continues. Please refer to the scenario materials on screen. Focus on the stop-and-check procedure at all blind intersections.',
+      message: `Training checkpoint: Adhere to standard operating procedures for ${context.scenario.title}. Verify all required safety controls before proceeding.`,
       severity: 'low',
     }
   }
 }
 
 export async function getIntroMessage(context: ChatContext): Promise<AIResponse> {
-  return MOCK_INTRO_RESPONSES[0]
+  return {
+    type: 'training_feedback',
+    message: `Welcome to ${context.scenario.title} simulation training. Review the initial incident video carefully to identify procedural failures and root causes.`,
+    severity: 'low',
+    nextAction: 'watch_negative_video',
+  }
 }
 
 export async function getAfterNegativeVideoMessage(context: ChatContext): Promise<AIResponse> {
-  return MOCK_AFTER_NEGATIVE_VIDEO[0]
+  const q = getAfterVideoQuestion(context.scenario)
+  return {
+    type: 'quiz_question',
+    message: q.question,
+    options: q.options,
+    correctOption: q.correctIndex,
+    explanation: q.explanation,
+  }
 }
 
-export async function getPerformanceSummary(_context: ChatContext, _score: number): Promise<AIResponse> {
-  return MOCK_PERFORMANCE_SUMMARY
+export async function getPerformanceSummary(context: ChatContext, score: number): Promise<AIResponse> {
+  const passed = score >= (context.scenario.assessment.passingScore || 80)
+  return {
+    type: 'summary',
+    message: passed
+      ? `Assessment completed with passing score of ${score}%. Demonstrated compliance with core safety controls for ${context.scenario.title}.`
+      : `Assessment recorded score of ${score}% (passing threshold: ${context.scenario.assessment.passingScore || 80}%). Review the positive demonstration and re-attempt module.`,
+    severity: passed ? 'low' : 'high',
+    nextAction: 'complete',
+  }
 }
 
 export async function evaluateQuizAnswer(
   questionId: string,
   selectedIndex: number,
   correctIndex: number,
-  _context: ChatContext
+  context: ChatContext
 ): Promise<AIResponse> {
-  if (selectedIndex === correctIndex) {
-    return MOCK_QUIZ_FEEDBACK_CORRECT
+  const isCorrect = selectedIndex === correctIndex
+  return {
+    type: 'evaluation',
+    message: isCorrect
+      ? `Correct. Adherence to ${context.scenario.title} safety standards confirmed.`
+      : `Incorrect. Please review the standard procedure for ${context.scenario.title}: ${context.scenario.positiveCase.description}`,
+    severity: isCorrect ? 'low' : 'medium',
+    correct: isCorrect,
   }
-  return MOCK_QUIZ_FEEDBACK_INCORRECT
 }

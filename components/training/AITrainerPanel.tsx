@@ -232,7 +232,8 @@ export function AITrainerPanel({ scenario, compact }: Props) {
           style={{
             background: 'var(--sg-accent)', border: 'none',
             borderRadius: 6, padding: '8px 12px',
-            cursor: 'pointer', color: '#000', flexShrink: 0,
+            cursor: 'pointer', color: '#ffffff', flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
           <Send size={14} />

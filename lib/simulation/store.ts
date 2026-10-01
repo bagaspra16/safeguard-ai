@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import type { SimulationPhase, SimulationEventType, PlayerState, ForkliftState, QuizAnswer, AIResponse } from '@/types'
-import { FORKLIFT_QUIZ_QUESTIONS } from '@/lib/scenarios/data'
 
 export interface SimulationEvent {
   id: string
@@ -74,6 +73,11 @@ export interface SimulationStore {
   elapsedSeconds: number
   incrementTimer: () => void
 
+  // ─ Pause State
+  isPaused: boolean
+  setIsPaused: (paused: boolean) => void
+  togglePause: () => void
+
   // ─ Reset
   reset: () => void
 }
@@ -82,6 +86,7 @@ const initialState = {
   sessionId: `session_${Date.now()}`,
   scenarioId: 'forklift-blind-corner-001',
   phase: 'idle' as SimulationPhase,
+  isPaused: false,
   playerState: 'idle' as PlayerState,
   forkliftState: 'idle' as ForkliftState,
   events: [] as SimulationEvent[],
@@ -150,14 +155,27 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
   nextQuestion: () => {
     set((state) => ({
-      currentQuestionIndex: Math.min(state.currentQuestionIndex + 1, FORKLIFT_QUIZ_QUESTIONS.length - 1),
+      currentQuestionIndex: state.currentQuestionIndex + 1,
     }))
   },
 
   setScore: (score) => set({ score }),
   setVrMode: (vrMode) => set({ vrMode }),
   setVrAvailable: (vrAvailable) => set({ vrAvailable }),
-  incrementTimer: () => set((state) => ({ elapsedSeconds: state.elapsedSeconds + 1 })),
+  incrementTimer: () => {
+    if (!get().isPaused) {
+      set((state) => ({ elapsedSeconds: state.elapsedSeconds + 1 }))
+    }
+  },
+  setIsPaused: (isPaused) => {
+    set({ isPaused })
+    get().addEvent(isPaused ? 'session_paused' as unknown as SimulationEventType : 'session_resumed' as unknown as SimulationEventType)
+  },
+  togglePause: () => {
+    const nextPaused = !get().isPaused
+    set({ isPaused: nextPaused })
+    get().addEvent(nextPaused ? 'session_paused' as unknown as SimulationEventType : 'session_resumed' as unknown as SimulationEventType)
+  },
 
   reset: () => {
     set({

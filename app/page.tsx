@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, Environment, Float, Text } from '@react-three/drei'
+import { OrbitControls, Float } from '@react-three/drei'
 import { Suspense, useRef, useEffect, useState } from 'react'
 import * as THREE from 'three'
 import { ShieldAlert, Brain, Boxes, Glasses, Film, BarChart3, Zap } from 'lucide-react'
@@ -13,7 +13,7 @@ function WarehouseFloor() {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <planeGeometry args={[30, 30]} />
-      <meshStandardMaterial color="#1a1a1a" roughness={0.8} metalness={0.2} />
+      <meshStandardMaterial color="#e2e8f0" roughness={0.8} metalness={0.1} />
     </mesh>
   )
 }
@@ -22,7 +22,7 @@ function SafetyStripe({ x, z }: { x: number; z: number }) {
   return (
     <mesh position={[x, 0.01, z]} rotation={[-Math.PI / 2, 0, 0]}>
       <planeGeometry args={[0.3, 6]} />
-      <meshStandardMaterial color="#f59e0b" roughness={0.5} />
+      <meshStandardMaterial color="#f97316" roughness={0.5} />
     </mesh>
   )
 }
@@ -33,13 +33,13 @@ function Shelf({ position }: { position: [number, number, number] }) {
       {[0, 1.2, 2.4].map((y) => (
         <mesh key={y} position={[0, y, 0]} castShadow>
           <boxGeometry args={[3, 0.08, 0.8]} />
-          <meshStandardMaterial color="#2a2f38" roughness={0.9} metalness={0.3} />
+          <meshStandardMaterial color="#cbd5e1" roughness={0.9} metalness={0.2} />
         </mesh>
       ))}
       {[-1.4, 1.4].map((x) => (
         <mesh key={x} position={[x, 1.2, 0]}>
           <boxGeometry args={[0.06, 2.6, 0.06]} />
-          <meshStandardMaterial color="#3d4452" roughness={0.8} metalness={0.5} />
+          <meshStandardMaterial color="#94a3b8" roughness={0.8} metalness={0.3} />
         </mesh>
       ))}
     </group>
@@ -48,18 +48,18 @@ function Shelf({ position }: { position: [number, number, number] }) {
 
 function HeroForklift({ t }: { t: number }) {
   const x = Math.sin(t * 0.4) * 4 + 4
-  const color = t % (Math.PI * 2) < Math.PI ? '#f59e0b' : '#ef4444'
+  const color = t % (Math.PI * 2) < Math.PI ? '#f97316' : '#dc2626'
   return (
     <group position={[x, 0, 2]}>
       {/* Body */}
       <mesh position={[0, 0.5, 0]} castShadow>
         <boxGeometry args={[1.4, 1.0, 2]} />
-        <meshStandardMaterial color="#334155" roughness={0.4} metalness={0.6} />
+        <meshStandardMaterial color="#ea580c" roughness={0.3} metalness={0.4} />
       </mesh>
       {/* Mast */}
       <mesh position={[0.5, 1.5, 0]}>
         <boxGeometry args={[0.12, 2, 0.12]} />
-        <meshStandardMaterial color="#475569" metalness={0.7} />
+        <meshStandardMaterial color="#64748b" metalness={0.7} />
       </mesh>
       {/* Fork */}
       <mesh position={[0.5, 0.4, 0]}>
@@ -75,7 +75,7 @@ function HeroForklift({ t }: { t: number }) {
       {[[-0.55, -0.8], [0.55, -0.8], [-0.55, 0.8], [0.55, 0.8]].map(([wx, wz], i) => (
         <mesh key={i} position={[wx as number, 0.12, wz as number]} rotation={[0, 0, Math.PI / 2]}>
           <cylinderGeometry args={[0.18, 0.18, 0.2, 12]} />
-          <meshStandardMaterial color="#1e293b" roughness={0.9} />
+          <meshStandardMaterial color="#334155" roughness={0.9} />
         </mesh>
       ))}
     </group>
@@ -99,7 +99,7 @@ function Worker({ t }: { t: number }) {
       {/* Helmet */}
       <mesh position={[0, 1.82, 0]}>
         <sphereGeometry args={[0.21, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2]} />
-        <meshStandardMaterial color="#facc15" roughness={0.5} />
+        <meshStandardMaterial color="#fbbf24" roughness={0.5} />
       </mesh>
     </group>
   )
@@ -112,30 +112,13 @@ function HazardIndicator({ t }: { t: number }) {
       <mesh>
         <ringGeometry args={[0.4, 0.5, 32]} />
         <meshStandardMaterial
-          color="#ef4444"
-          emissive="#ef4444"
-          emissiveIntensity={opacity * 3}
+          color="#dc2626"
+          emissive="#dc2626"
+          emissiveIntensity={opacity * 2}
           transparent
           opacity={opacity * 0.9 + 0.1}
           side={THREE.DoubleSide}
         />
-      </mesh>
-    </group>
-  )
-}
-
-function AIPanel() {
-  return (
-    <group position={[-6, 2.5, -5]} rotation={[0, Math.PI / 6, 0]}>
-      {/* Panel background */}
-      <mesh>
-        <planeGeometry args={[3.5, 2.2]} />
-        <meshStandardMaterial color="#13161a" roughness={0.3} metalness={0.1} />
-      </mesh>
-      {/* Panel border */}
-      <mesh>
-        <planeGeometry args={[3.52, 2.22]} />
-        <meshStandardMaterial color="#f59e0b" roughness={0.5} />
       </mesh>
     </group>
   )
@@ -159,10 +142,10 @@ function HeroScene() {
 
   return (
     <>
-      <ambientLight intensity={0.3} />
-      <directionalLight position={[10, 12, 5]} intensity={1.2} castShadow />
-      <pointLight position={[-5, 4, 3]} intensity={0.8} color="#f59e0b" />
-      <pointLight position={[5, 3, -3]} intensity={0.4} color="#3b82f6" />
+      <ambientLight intensity={0.7} />
+      <directionalLight position={[10, 12, 5]} intensity={1.5} castShadow />
+      <pointLight position={[-5, 4, 3]} intensity={0.9} color="#f97316" />
+      <pointLight position={[5, 3, -3]} intensity={0.6} color="#3b82f6" />
 
       <WarehouseFloor />
 
@@ -187,9 +170,6 @@ function HeroScene() {
         <HazardIndicator t={t} />
       </Float>
 
-      {/* AI panel */}
-      <AIPanel />
-
       <OrbitControls
         enablePan={false}
         minDistance={8}
@@ -212,35 +192,37 @@ export default function LandingPage() {
       <nav style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
         padding: '0 40px',
-        height: '60px',
+        height: '64px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        background: 'rgba(13,15,17,0.9)',
+        background: 'rgba(255, 255, 255, 0.92)',
         backdropFilter: 'blur(12px)',
         borderBottom: '1px solid var(--sg-border)',
+        boxShadow: 'var(--sg-shadow-sm)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
-            width: 28, height: 28, borderRadius: 6,
-            background: 'var(--sg-accent)',
+            width: 32, height: 32, borderRadius: 8,
+            background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 900, fontSize: 14, color: '#000',
+            fontWeight: 900, fontSize: 16, color: '#ffffff',
+            boxShadow: '0 2px 8px rgba(249, 115, 22, 0.3)',
           }}>S</div>
-          <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: '-0.02em' }}>SafeGuard AI</span>
-          <span className="sg-badge sg-badge-warning" style={{ marginLeft: 8 }}>Beta</span>
+          <span style={{ fontWeight: 800, fontSize: 17, letterSpacing: '-0.02em', color: 'var(--sg-text-primary)' }}>SafeGuard AI</span>
+          <span className="sg-badge sg-badge-orange" style={{ marginLeft: 6 }}>V1.0</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
-          <a href="#features" style={{ color: 'var(--sg-text-secondary)', fontSize: 14, textDecoration: 'none' }}>Features</a>
-          <a href="#how-it-works" style={{ color: 'var(--sg-text-secondary)', fontSize: 14, textDecoration: 'none' }}>How It Works</a>
-          <Link href="/dashboard" className="sg-btn sg-btn-primary" style={{ padding: '7px 18px', fontSize: 13 }}>
+          <a href="#features" style={{ color: 'var(--sg-text-secondary)', fontSize: 14, fontWeight: 500, textDecoration: 'none' }}>Features</a>
+          <a href="#how-it-works" style={{ color: 'var(--sg-text-secondary)', fontSize: 14, fontWeight: 500, textDecoration: 'none' }}>How It Works</a>
+          <Link href="/dashboard" className="sg-btn sg-btn-primary" style={{ padding: '8px 20px', fontSize: 13 }}>
             Enter Platform
           </Link>
         </div>
       </nav>
 
       {/* Hero */}
-      <section style={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <section style={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column', paddingTop: 64 }}>
         {/* 3D Canvas */}
-        <div style={{ position: 'absolute', inset: 0 }}>
+        <div style={{ position: 'absolute', inset: 0, top: 64 }}>
           <Canvas
             shadows
             camera={{ position: [10, 8, 10], fov: 50 }}
@@ -252,10 +234,10 @@ export default function LandingPage() {
           </Canvas>
         </div>
 
-        {/* Gradient overlay */}
+        {/* Light Gradient overlay */}
         <div style={{
           position: 'absolute', inset: 0,
-          background: 'linear-gradient(135deg, rgba(13,15,17,0.85) 0%, rgba(13,15,17,0.4) 50%, rgba(13,15,17,0.6) 100%)',
+          background: 'linear-gradient(135deg, rgba(248,250,252,0.94) 0%, rgba(248,250,252,0.7) 45%, rgba(248,250,252,0.88) 100%)',
           pointerEvents: 'none',
         }} />
 
@@ -264,64 +246,71 @@ export default function LandingPage() {
           position: 'relative', zIndex: 10,
           flex: 1,
           display: 'flex', flexDirection: 'column', justifyContent: 'center',
-          padding: '120px 60px 60px',
-          maxWidth: 700,
+          padding: '80px 60px 60px',
+          maxWidth: 720,
         }}>
-          <div className="sg-badge sg-badge-warning" style={{ marginBottom: 24, width: 'fit-content', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Zap size={13} /> AI-Powered Safety Training
+          <div className="sg-badge sg-badge-orange" style={{ marginBottom: 20, width: 'fit-content', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Zap size={13} /> AI-Powered 360° Safety Training Platform
           </div>
 
           <h1 style={{
-            fontSize: 'clamp(40px, 5vw, 68px)',
+            fontSize: 'clamp(40px, 5vw, 64px)',
             fontWeight: 900,
-            lineHeight: 1.05,
+            lineHeight: 1.08,
             letterSpacing: '-0.03em',
-            marginBottom: 24,
+            marginBottom: 20,
+            color: 'var(--sg-text-primary)',
           }}>
-            Turn safety training into a{' '}
-            <span style={{ color: 'var(--sg-accent)' }}>decision-making</span>{' '}
+            Turn workplace safety training into an{' '}
+            <span style={{ color: 'var(--sg-accent)' }}>immersive 360°</span>{' '}
             simulation.
           </h1>
 
           <p style={{
             fontSize: 18, lineHeight: 1.7, color: 'var(--sg-text-secondary)',
-            marginBottom: 16, maxWidth: 560,
+            marginBottom: 16, maxWidth: 580,
           }}>
-            AI-generated workplace safety drills combining realistic incident videos, interactive 3D environments, WebXR training, and adaptive personalized feedback.
+            AI-generated safety drills combining realistic 360° incident videos, synchronized decision cues, WebXR spatial training, and adaptive AI evaluation.
           </p>
 
           <p style={{
             fontSize: 14, color: 'var(--sg-text-muted)',
-            marginBottom: 40,
+            marginBottom: 36,
           }}>
             Built for warehouse safety • forklift operations • OSHA compliance
           </p>
 
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            <Link href="/dashboard" className="sg-btn sg-btn-primary" style={{ fontSize: 15, padding: '13px 28px' }}>
+            <Link href="/dashboard" className="sg-btn sg-btn-primary" style={{ fontSize: 15, padding: '14px 30px' }}>
               Explore Safety Simulation →
             </Link>
-            <Link href="/dashboard/training/forklift-blind-corner-001" className="sg-btn sg-btn-secondary" style={{ fontSize: 15, padding: '13px 28px' }}>
-              See How It Works
+            <Link href="/dashboard/training/forklift-blind-corner-001" className="sg-btn sg-btn-secondary" style={{ fontSize: 15, padding: '14px 28px' }}>
+              Launch Forklift Drill
             </Link>
           </div>
         </div>
 
-        {/* Bottom label */}
+        {/* Bottom feature strip */}
         <div style={{
           position: 'relative', zIndex: 10,
           padding: '0 60px 40px',
-          display: 'flex', alignItems: 'center', gap: 24,
+          display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap',
         }}>
           {[
-            { icon: <ShieldAlert size={16} color="var(--sg-hazard)" />, label: 'Live Hazard Detection' },
+            { icon: <ShieldAlert size={16} color="var(--sg-hazard)" />, label: '360° Equirectangular Videos' },
             { icon: <Brain size={16} color="var(--sg-info)" />, label: 'AI Safety Instructor' },
-            { icon: <Boxes size={16} color="var(--sg-accent)" />, label: 'Interactive 3D Warehouse' },
+            { icon: <Boxes size={16} color="var(--sg-accent)" />, label: 'Real-Time Decision Cues' },
             { icon: <Glasses size={16} color="var(--sg-vr)" />, label: 'WebXR / Quest 2 Ready' },
           ].map((f) => (
-            <div key={f.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div key={f.label} style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'rgba(255, 255, 255, 0.8)',
+              padding: '6px 14px', borderRadius: 999,
+              border: '1px solid var(--sg-border)',
+              boxShadow: 'var(--sg-shadow-sm)',
+            }}>
               <span>{f.icon}</span>
-              <span style={{ fontSize: 12, color: 'var(--sg-text-secondary)', fontWeight: 500 }}>{f.label}</span>
+              <span style={{ fontSize: 13, color: 'var(--sg-text-primary)', fontWeight: 600 }}>{f.label}</span>
             </div>
           ))}
         </div>
@@ -329,16 +318,16 @@ export default function LandingPage() {
 
       {/* Features */}
       <section id="features" style={{
-        padding: '100px 60px',
+        padding: '90px 60px',
         background: 'var(--sg-bg-surface)',
         borderTop: '1px solid var(--sg-border)',
       }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-          <div style={{ textAlign: 'center', marginBottom: 64 }}>
-            <div className="sg-badge sg-badge-info" style={{ margin: '0 auto 16px', width: 'fit-content' }}>Platform Capabilities</div>
-            <h2 style={{ fontSize: 40, fontWeight: 800, marginBottom: 16 }}>One scenario. Every training format.</h2>
+          <div style={{ textAlign: 'center', marginBottom: 56 }}>
+            <div className="sg-badge sg-badge-orange" style={{ margin: '0 auto 14px', width: 'fit-content' }}>Platform Capabilities</div>
+            <h2 style={{ fontSize: 38, fontWeight: 800, marginBottom: 14 }}>One scenario. Every training format.</h2>
             <p style={{ color: 'var(--sg-text-secondary)', fontSize: 16, maxWidth: 540, margin: '0 auto' }}>
-              SafeGuard AI transforms a single safety incident into a synchronized multi-modal training experience.
+              SafeGuard AI transforms safety incidents into interactive, synchronized multi-modal training experiences.
             </p>
           </div>
 
@@ -350,44 +339,63 @@ export default function LandingPage() {
             {[
               {
                 icon: <Film size={24} color="var(--sg-hazard)" />,
-                title: 'Positive & Negative Videos',
-                desc: 'AI-generated incident videos showing exactly what went wrong and the correct safe procedure — side by side.',
+                title: '360° Incident & Safe Videos',
+                desc: 'AI-generated 360° immersive videos showing what went wrong and demonstrating the correct OSHA procedure.',
                 color: 'var(--sg-hazard)',
               },
               {
                 icon: <Boxes size={24} color="var(--sg-accent)" />,
-                title: 'Interactive 3D Simulation',
-                desc: 'Walk through a full warehouse environment. Identify hazards, make decisions, and see real-time consequences.',
+                title: 'Real-Time Decision Cues',
+                desc: 'Videos pause dynamically at critical moments, prompting trainees to make real-time decisions with instant feedback.',
                 color: 'var(--sg-accent)',
               },
               {
                 icon: <Glasses size={24} color="var(--sg-vr)" />,
-                title: 'WebXR Training',
-                desc: 'Enter immersive VR mode on Meta Quest 2 directly from the browser. Same scene, no app install required.',
+                title: 'WebXR / Headset Compatible',
+                desc: 'Compatible with Meta Quest 2 and VR headsets via WebXR directly in the browser with zero installation.',
                 color: 'var(--sg-vr)',
               },
               {
                 icon: <Brain size={24} color="var(--sg-info)" />,
                 title: 'AI Safety Instructor',
-                desc: 'An AI trainer who knows your scenario, asks probing questions, evaluates your answers, and adapts to your performance.',
+                desc: 'An adaptive AI coach that debriefs decisions, highlights OSHA regulations, and explains core safety concepts.',
                 color: 'var(--sg-info)',
               },
               {
                 icon: <BarChart3 size={24} color="var(--sg-safe)" />,
                 title: 'Performance Analytics',
-                desc: 'Track hazard detection rate, decision accuracy, quiz scores, and reaction times across your entire team.',
+                desc: 'Comprehensive scoring on reaction times, hazard identification accuracy, and team compliance progress.',
                 color: 'var(--sg-safe)',
               },
               {
                 icon: <Zap size={24} color="var(--sg-accent)" />,
-                title: 'Scenario Engine',
-                desc: 'One structured scenario powers every format — video, 3D, VR, quiz, and AI feedback all share the same data source.',
+                title: 'SIVS Scenario Engine',
+                desc: 'Compliant with SafeGuard Immersive Video Standard (SIVS v1.0) for consistent enterprise training production.',
                 color: 'var(--sg-accent)',
               },
             ].map((f) => (
-              <div key={f.title} className="sg-surface" style={{ padding: '28px 24px' }}>
-                <div style={{ marginBottom: 16 }}>{f.icon}</div>
-                <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: f.color }}>{f.title}</h3>
+              <div
+                key={f.title}
+                style={{
+                  background: 'var(--sg-bg-base)',
+                  border: '1px solid var(--sg-border)',
+                  borderRadius: 14,
+                  padding: '28px 24px',
+                  boxShadow: 'var(--sg-shadow-sm)',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <div style={{
+                  width: 46, height: 46, borderRadius: 10,
+                  background: 'var(--sg-bg-surface)',
+                  border: '1px solid var(--sg-border)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  marginBottom: 18,
+                  boxShadow: 'var(--sg-shadow-sm)',
+                }}>
+                  {f.icon}
+                </div>
+                <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 8, color: 'var(--sg-text-primary)' }}>{f.title}</h3>
                 <p style={{ fontSize: 14, color: 'var(--sg-text-secondary)', lineHeight: 1.6 }}>{f.desc}</p>
               </div>
             ))}
@@ -396,38 +404,45 @@ export default function LandingPage() {
       </section>
 
       {/* How it works */}
-      <section id="how-it-works" style={{ padding: '100px 60px' }}>
+      <section id="how-it-works" style={{ padding: '90px 60px', background: 'var(--sg-bg-base)' }}>
         <div style={{ maxWidth: 900, margin: '0 auto' }}>
-          <div style={{ textAlign: 'center', marginBottom: 64 }}>
-            <h2 style={{ fontSize: 40, fontWeight: 800, marginBottom: 16 }}>The Training Flow</h2>
+          <div style={{ textAlign: 'center', marginBottom: 56 }}>
+            <h2 style={{ fontSize: 38, fontWeight: 800, marginBottom: 14 }}>The Training Journey</h2>
             <p style={{ color: 'var(--sg-text-secondary)', fontSize: 16 }}>
-              Every training session follows the same structured journey from incident to insight.
+              Structured 5-phase experiential learning pipeline from incident analysis to mastery.
             </p>
           </div>
 
-          <div style={{ position: 'relative' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {[
-              { step: '01', label: 'Watch the Incident', desc: 'See the negative case — what went wrong and why.', color: 'var(--sg-hazard)' },
-              { step: '02', label: 'AI Question', desc: 'The AI instructor asks you to identify the critical mistake.', color: 'var(--sg-warning)' },
-              { step: '03', label: 'Enter 3D Simulation', desc: 'Walk through the environment. Find the hazards yourself.', color: 'var(--sg-accent)' },
-              { step: '04', label: 'Make a Decision', desc: 'Stop and check, or continue? Your choice, real consequences.', color: 'var(--sg-info)' },
-              { step: '05', label: 'Watch Correct Response', desc: 'See the positive case — the correct procedure in action.', color: 'var(--sg-safe)' },
-              { step: '06', label: 'Quiz & Feedback', desc: 'Test your knowledge. AI evaluates and explains every answer.', color: 'var(--sg-vr)' },
-              { step: '07', label: 'Performance Report', desc: 'Score, reaction time, hazard detection, and improvement areas.', color: 'var(--sg-accent)' },
-            ].map((s, i) => (
-              <div key={s.step} style={{
-                display: 'flex', gap: 24, marginBottom: 24,
-                opacity: 1,
-              }}>
+              { step: '01', label: 'Observe the Incident', desc: 'Watch the AI-generated incident in 360° and evaluate critical hazards in real-time.', color: 'var(--sg-hazard)' },
+              { step: '02', label: 'AI Debrief & Analysis', desc: 'The AI instructor analyzes your observations and checks your understanding of the root cause.', color: 'var(--sg-warning)' },
+              { step: '03', label: 'Study Correct Procedure', desc: 'Experience the safe procedure demonstration with embedded OSHA decision checkpoints.', color: 'var(--sg-safe)' },
+              { step: '04', label: 'Knowledge Assessment', desc: 'Scenario-specific quiz verifying regulatory rules, stopping distances, and safety protocols.', color: 'var(--sg-info)' },
+              { step: '05', label: 'Full Performance Report', desc: 'Detailed debrief with scoring, OSHA compliance alignment, and safety badges.', color: 'var(--sg-accent)' },
+            ].map((s) => (
+              <div
+                key={s.step}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 20,
+                  padding: '20px 24px',
+                  background: 'var(--sg-bg-surface)',
+                  border: '1px solid var(--sg-border)',
+                  borderRadius: 12,
+                  boxShadow: 'var(--sg-shadow-sm)',
+                }}
+              >
                 <div style={{
-                  width: 48, height: 48, borderRadius: 8, flexShrink: 0,
-                  background: `rgba(${s.color === 'var(--sg-hazard)' ? '239,68,68' : s.color === 'var(--sg-warning)' ? '245,158,11' : s.color === 'var(--sg-accent)' ? '245,158,11' : s.color === 'var(--sg-info)' ? '59,130,246' : s.color === 'var(--sg-safe)' ? '34,197,94' : s.color === 'var(--sg-vr)' ? '139,92,246' : '245,158,11'},0.15)`,
-                  border: `1px solid ${s.color === 'var(--sg-hazard)' ? 'rgba(239,68,68,0.3)' : s.color === 'var(--sg-info)' ? 'rgba(59,130,246,0.3)' : s.color === 'var(--sg-safe)' ? 'rgba(34,197,94,0.3)' : s.color === 'var(--sg-vr)' ? 'rgba(139,92,246,0.3)' : 'rgba(245,158,11,0.3)'}`,
+                  width: 44, height: 44, borderRadius: 10, flexShrink: 0,
+                  background: 'var(--sg-accent-dim)',
+                  border: '1px solid rgba(249, 115, 22, 0.25)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontWeight: 800, fontSize: 13, color: s.color, fontFamily: 'JetBrains Mono, monospace',
+                  fontWeight: 900, fontSize: 15, color: 'var(--sg-accent)', fontFamily: 'JetBrains Mono, monospace',
                 }}>{s.step}</div>
-                <div style={{ paddingTop: 4 }}>
-                  <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{s.label}</div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 2, color: 'var(--sg-text-primary)' }}>{s.label}</div>
                   <div style={{ color: 'var(--sg-text-secondary)', fontSize: 14 }}>{s.desc}</div>
                 </div>
               </div>
@@ -443,33 +458,36 @@ export default function LandingPage() {
         borderTop: '1px solid var(--sg-border)',
         textAlign: 'center',
       }}>
-        <h2 style={{ fontSize: 36, fontWeight: 800, marginBottom: 16 }}>
-          Ready to run your first simulation?
+        <h2 style={{ fontSize: 36, fontWeight: 800, marginBottom: 14 }}>
+          Ready to experience immersive safety training?
         </h2>
-        <p style={{ color: 'var(--sg-text-secondary)', marginBottom: 40, fontSize: 16 }}>
-          The Forklift Blind Corner scenario runs in full demo mode — no API keys required.
+        <p style={{ color: 'var(--sg-text-secondary)', marginBottom: 36, fontSize: 16 }}>
+          The Forklift Blind Corner scenario is available in full interactive demo mode now.
         </p>
-        <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
+        <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
           <Link href="/dashboard" className="sg-btn sg-btn-primary" style={{ fontSize: 15, padding: '14px 32px' }}>
             Start Demo Training →
           </Link>
-          <Link href="/dashboard/admin" className="sg-btn sg-btn-secondary" style={{ fontSize: 15, padding: '14px 32px' }}>
-            Admin Dashboard
+          <Link href="/dashboard/scenarios" className="sg-btn sg-btn-secondary" style={{ fontSize: 15, padding: '14px 32px' }}>
+            Browse Scenarios
           </Link>
         </div>
       </section>
 
       {/* Footer */}
       <footer style={{
-        padding: '32px 60px',
+        padding: '28px 60px',
+        background: 'var(--sg-bg-base)',
         borderTop: '1px solid var(--sg-border)',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 16,
       }}>
-        <div style={{ fontSize: 13, color: 'var(--sg-text-muted)' }}>
-          © 2026 SafeGuard AI. Industrial safety training platform.
+        <div style={{ fontSize: 13, color: 'var(--sg-text-secondary)', fontWeight: 500 }}>
+          © 2026 SafeGuard AI. Industrial Workplace Safety Training Platform.
         </div>
         <div style={{ fontSize: 12, color: 'var(--sg-text-muted)' }}>
-          Running in Demo Mode — <span style={{ color: 'var(--sg-safe)' }}>All features available</span>
+          Running in Demo Mode — <span style={{ color: 'var(--sg-safe)', fontWeight: 600 }}>All Features Active</span>
         </div>
       </footer>
     </div>

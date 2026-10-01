@@ -3,7 +3,11 @@
 import { useState } from 'react'
 import type { Scenario } from '@/types'
 import { useSimulationStore } from '@/lib/simulation/store'
-import { FORKLIFT_QUIZ_QUESTIONS } from '@/lib/scenarios/data'
+import {
+  FORKLIFT_QUIZ_QUESTIONS,
+  FIRE_QUIZ_QUESTIONS,
+  CONSTRUCTION_FALL_QUIZ_QUESTIONS,
+} from '@/lib/scenarios/data'
 import { Brain, CheckCircle, XCircle, ChevronRight } from 'lucide-react'
 
 interface Props {
@@ -24,8 +28,21 @@ export function QuizPhase({ scenario, onComplete }: Props) {
   const [startTime] = useState(Date.now())
   const [questionStartTime, setQuestionStartTime] = useState(Date.now())
 
-  const questions = FORKLIFT_QUIZ_QUESTIONS
-  const currentQ = questions[currentQuestionIndex]
+  // Dynamically select the question bank based on scenario ID / category
+  const questions = (() => {
+    if (scenario.id === 'industrial-fire-005' || scenario.category === 'fire_safety') {
+      return FIRE_QUIZ_QUESTIONS
+    }
+    if (
+      scenario.id === 'construction-fall-006' ||
+      scenario.id === 'fall-protection-004' ||
+      scenario.category === 'construction_safety'
+    ) {
+      return CONSTRUCTION_FALL_QUIZ_QUESTIONS
+    }
+    return FORKLIFT_QUIZ_QUESTIONS
+  })()
+  const currentQ = questions[currentQuestionIndex] || questions[0]
   const totalQ = questions.length
   const isLast = currentQuestionIndex === totalQ - 1
   const isCorrect = submitted && selectedOption === currentQ.correctIndex

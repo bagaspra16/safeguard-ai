@@ -23,10 +23,20 @@ export function VideoPhase({ scenario, caseType, onComplete }: Props) {
   const videoUrl = caseType === 'negative' ? scenario.video.negative : scenario.video.positive
 
   const isNegative = caseType === 'negative'
+  const isPaused = useSimulationStore((s) => s.isPaused)
 
   useEffect(() => {
     addEvent('video_started', undefined, { caseType })
   }, [caseType, addEvent])
+
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v) return
+    if (isPaused) {
+      v.pause()
+      setPlaying(false)
+    }
+  }, [isPaused])
 
   const handlePlay = () => {
     const v = videoRef.current
@@ -139,17 +149,17 @@ export function VideoPhase({ scenario, caseType, onComplete }: Props) {
               <div style={{
                 padding: '12px 20px',
                 background: 'var(--sg-hazard-bg)', border: '1px solid rgba(239,68,68,0.3)',
-                borderRadius: 8, fontSize: 13, color: 'var(--sg-hazard)', maxWidth: 380, textAlign: 'center',
+                borderRadius: 8, fontSize: 13, color: 'var(--sg-hazard)', maxWidth: 460, textAlign: 'center', lineHeight: 1.5,
               }}>
-                Worker approaches blind corner intersection without stopping → forklift rounds corner → near-collision
+                <strong>Incident Sequence:</strong> {scenario.negativeCase?.actions?.length ? scenario.negativeCase.actions.map(a => a.replace(/_/g, ' ')).join(' → ') : scenario.negativeCase?.description}
               </div>
             ) : (
               <div style={{
                 padding: '12px 20px',
                 background: 'var(--sg-safe-bg)', border: '1px solid rgba(34,197,94,0.3)',
-                borderRadius: 8, fontSize: 13, color: 'var(--sg-safe)', maxWidth: 380, textAlign: 'center',
+                borderRadius: 8, fontSize: 13, color: 'var(--sg-safe)', maxWidth: 460, textAlign: 'center', lineHeight: 1.5,
               }}>
-                Worker slows down → stops completely → looks left and right → waits for forklift → proceeds safely
+                <strong>Standard Protocol:</strong> {scenario.positiveCase?.actions?.length ? scenario.positiveCase.actions.map(a => a.replace(/_/g, ' ')).join(' → ') : scenario.positiveCase?.description}
               </div>
             )}
           </div>

@@ -129,12 +129,13 @@ export default function ScenariosPage() {
               gap: 8,
               padding: '10px 18px',
               borderRadius: 8,
-              background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-              color: '#000000',
+              background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+              color: '#ffffff',
               fontSize: 13,
               fontWeight: 700,
               border: 'none',
               cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(249, 115, 22, 0.25)',
             }}
           >
             <Sparkles size={16} /> Generate Scenario with AI
@@ -291,11 +292,12 @@ export default function ScenariosPage() {
                   gap: 6,
                   padding: '8px 16px',
                   borderRadius: 8,
-                  background: 'var(--sg-primary)',
+                  background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
                   color: '#ffffff',
                   fontSize: 13,
                   fontWeight: 600,
                   textDecoration: 'none',
+                  boxShadow: '0 2px 6px rgba(249, 115, 22, 0.25)',
                 }}
               >
                 <Play size={13} fill="#ffffff" /> Launch
@@ -311,8 +313,8 @@ export default function ScenariosPage() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.7)',
-            backdropFilter: 'blur(4px)',
+            background: 'rgba(15, 23, 42, 0.55)',
+            backdropFilter: 'blur(6px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -328,7 +330,7 @@ export default function ScenariosPage() {
               border: '1px solid var(--sg-border)',
               borderRadius: 16,
               padding: 28,
-              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.15)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -337,7 +339,7 @@ export default function ScenariosPage() {
                   width: 36,
                   height: 36,
                   borderRadius: 8,
-                  background: 'rgba(245,158,11,0.2)',
+                  background: 'var(--sg-accent-dim)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -403,12 +405,13 @@ export default function ScenariosPage() {
                   gap: 8,
                   padding: '10px 20px',
                   borderRadius: 8,
-                  background: isGenerating ? 'var(--sg-border)' : 'var(--sg-accent)',
-                  color: '#000000',
+                  background: isGenerating ? 'var(--sg-border)' : 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                  color: '#ffffff',
                   fontSize: 13,
                   fontWeight: 700,
                   border: 'none',
                   cursor: isGenerating ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 2px 8px rgba(249, 115, 22, 0.25)',
                 }}
               >
                 {isGenerating ? (

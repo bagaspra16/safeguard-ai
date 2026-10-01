@@ -314,24 +314,24 @@ function FirstPersonController({
       shakeOffsetRef.current = { x: 0, y: 0 }
     }
 
-    let moveX = 0
-    let moveZ = 0
+    let fwd = 0
+    let strafe = 0
     const keys = keysRef.current
-    if (keys['KeyW'] || keys['ArrowUp']) moveZ -= 1
-    if (keys['KeyS'] || keys['ArrowDown']) moveZ += 1
-    if (keys['KeyA'] || keys['ArrowLeft']) moveX -= 1
-    if (keys['KeyD'] || keys['ArrowRight']) moveX += 1
+    if (keys['KeyW'] || keys['ArrowUp']) fwd += 1
+    if (keys['KeyS'] || keys['ArrowDown']) fwd -= 1
+    if (keys['KeyD'] || keys['ArrowRight']) strafe += 1
+    if (keys['KeyA'] || keys['ArrowLeft']) strafe -= 1
 
-    const isMoving = moveX !== 0 || moveZ !== 0
+    const isMoving = fwd !== 0 || strafe !== 0
     if (isMoving && !isCrashing) {
       const speed = (isSlowMo ? 0.6 : 3.5) * timeScale * delta
-      const forwardX = Math.sin(yaw)
-      const forwardZ = Math.cos(yaw)
+      const fwdX = -Math.sin(yaw)
+      const fwdZ = -Math.cos(yaw)
       const rightX = Math.cos(yaw)
       const rightZ = -Math.sin(yaw)
 
-      const dx = (forwardX * moveZ + rightX * moveX) * speed
-      const dz = (forwardZ * moveZ + rightZ * moveX) * speed
+      const dx = (fwdX * fwd + rightX * strafe) * speed
+      const dz = (fwdZ * fwd + rightZ * strafe) * speed
 
       setPlayerPos(([px, py, pz]) => [
         Math.max(-14, Math.min(6, px + dx)),
@@ -1044,6 +1044,7 @@ export function SimulationPhaseView({ scenario }: Props) {
   const vrAvailable = useSimulationStore((s) => s.vrAvailable)
   const setVrAvailable = useSimulationStore((s) => s.setVrAvailable)
   const setVrMode = useSimulationStore((s) => s.setVrMode)
+  const isPaused = useSimulationStore((s) => s.isPaused)
   const reset = useSimulationStore((s) => s.reset)
 
   // Camera & Movement State
@@ -1078,7 +1079,7 @@ export function SimulationPhaseView({ scenario }: Props) {
 
   // Initial auto-walking along green road towards red line (x = -4.2)
   useEffect(() => {
-    if (scenarioStage !== 'walking') return
+    if (scenarioStage !== 'walking' || isPaused) return
     const interval = setInterval(() => {
       setPlayerPos(([px, py, pz]) => {
         const nextX = px + 0.075 * timeScale
@@ -1102,7 +1103,7 @@ export function SimulationPhaseView({ scenario }: Props) {
       setForkliftZ((prev) => Math.max(prev - 0.12 * timeScale, 4.5))
     }, 40)
     return () => clearInterval(interval)
-  }, [scenarioStage, timeScale, addAIMessage])
+  }, [scenarioStage, timeScale, addAIMessage, isPaused])
 
   // Handle Blind Spot Selection
   const handleBlindSpotSelected = (id: string) => {
@@ -1315,7 +1316,7 @@ export function SimulationPhaseView({ scenario }: Props) {
       )}
 
       {/* HUD Overlay */}
-      <SimulationHUD />
+      <SimulationHUD scenario={scenario} />
 
       {/* Top Center Camera & Audio Bar */}
       <div

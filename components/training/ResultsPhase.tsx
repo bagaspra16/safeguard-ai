@@ -64,7 +64,14 @@ export function ResultsPhase({ scenario }: Props) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            scenarioId: scenario.id,
             scenarioTitle: scenario.title,
+            scenarioCategory: scenario.category,
+            scenarioDescription: scenario.description,
+            environment: scenario.environment,
+            learningObjectives: scenario.learningObjectives,
+            positiveCase: scenario.positiveCase?.description,
+            negativeCase: scenario.negativeCase?.description,
             score: overallScore,
             passed,
             hazardsDetectedCount: detectedHazards.length,
@@ -88,7 +95,23 @@ export function ResultsPhase({ scenario }: Props) {
     return () => {
       isMounted = false
     }
-  }, [scenario.title, overallScore, passed, detectedHazards.length, totalHazards, decisionCorrect, quizScore, elapsedSeconds])
+  }, [
+    scenario.id,
+    scenario.title,
+    scenario.category,
+    scenario.description,
+    scenario.environment,
+    scenario.learningObjectives,
+    scenario.positiveCase,
+    scenario.negativeCase,
+    overallScore,
+    passed,
+    detectedHazards.length,
+    totalHazards,
+    decisionCorrect,
+    quizScore,
+    elapsedSeconds,
+  ])
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '40px 24px 80px' }}>
@@ -308,19 +331,19 @@ export function ResultsPhase({ scenario }: Props) {
               {passed ? (
                 <div>
                   <p style={{ margin: '0 0 12px', fontWeight: 600, color: '#10b981' }}>
-                    Excellent performance! You successfully identified high-risk blind corners and respected vehicle right-of-way.
+                    Outstanding compliance demonstrated for {scenario.title}! You successfully identified operational hazards and adhered to all required safety controls.
                   </p>
                   <p style={{ margin: 0 }}>
-                    <strong>Key Highlights:</strong> You yielded appropriately before intersection lines, verified convex mirror reflections, and demonstrated clear comprehension of OSHA 1910.178 pedestrian safety regulations during the quiz assessment.
+                    <strong>Key Highlights:</strong> {scenario.positiveCase?.description || 'Standard safety procedures and risk mitigation protocols were executed accurately.'} Adherence to EHS standards confirmed across all assessment checkpoints.
                   </p>
                 </div>
               ) : (
                 <div>
                   <p style={{ margin: '0 0 12px', fontWeight: 600, color: '#ef4444' }}>
-                    Critical Safety Deficiencies Detected:
+                    Critical Safety Deficiencies Detected during {scenario.title}:
                   </p>
                   <p style={{ margin: 0 }}>
-                    During the 3D blind corner intersection, safety protocols require coming to a full stop at designated line markings, checking the convex overhead mirror, and establishing eye contact with the forklift operator before crossing. We recommend replaying the positive demonstration video and re-taking this simulation.
+                    <strong>Required Standard Procedure:</strong> {scenario.positiveCase?.description || 'Follow all mandatory risk mitigation procedures and verified safety controls.'} We recommend replaying the positive demonstration video and re-taking this simulation.
                   </p>
                 </div>
               )}

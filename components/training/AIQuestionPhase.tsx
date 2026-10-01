@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { Scenario } from '@/types'
 import { useSimulationStore } from '@/lib/simulation/store'
+import { getAfterVideoQuestion } from '@/lib/scenarios/data'
 import { AITrainerPanel } from './AITrainerPanel'
 import { Bot, ChevronRight } from 'lucide-react'
 
@@ -11,20 +12,8 @@ interface Props {
   onContinue: () => void
 }
 
-const AFTER_VIDEO_QUESTION = {
-  question: "You just watched the incident. What was the worker's critical mistake when approaching the intersection?",
-  options: [
-    'They were walking too slowly',
-    'They did not stop or check before entering the intersection',
-    'They were carrying too many items',
-    'They made eye contact with the forklift operator',
-  ],
-  correctIndex: 1,
-  explanation:
-    'The worker failed to stop and check at the blind intersection. The shelving unit blocked their view of the approaching forklift, but they proceeded anyway. This is the fundamental error — always stop and check at blind intersections.',
-}
-
 export function AIQuestionPhase({ scenario, onContinue }: Props) {
+  const afterVideoQuestion = getAfterVideoQuestion(scenario)
   const [selectedOption, setSelectedOption] = useState<number | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const addEvent = useSimulationStore((s) => s.addEvent)
@@ -40,36 +29,36 @@ export function AIQuestionPhase({ scenario, onContinue }: Props) {
     setTimeout(() => {
       addAIMessage({
         role: 'assistant',
-        content: "You've watched the incident video. Before we enter the simulation, I want to check your understanding. Answer the question below.",
+        content: `You've watched the ${scenario.title} incident video. Before we enter the active 3D simulation, I want to evaluate your hazard assessment. Please answer the question below.`,
         response: {
           type: 'quiz_question',
-          message: AFTER_VIDEO_QUESTION.question,
+          message: afterVideoQuestion.question,
         },
       })
       setAIThinking(false)
     }, 800)
-  }, [addAIMessage, setAIThinking])
+  }, [addAIMessage, setAIThinking, scenario.title, afterVideoQuestion.question])
 
   const handleSubmit = () => {
     if (selectedOption === null) return
     setSubmitted(true)
-    const correct = selectedOption === AFTER_VIDEO_QUESTION.correctIndex
+    const correct = selectedOption === afterVideoQuestion.correctIndex
     addEvent(correct ? 'correct_action' : 'wrong_action', 'ai-question-phase')
     addAIMessage({
       role: 'assistant',
       content: correct
-        ? `Correct. ${AFTER_VIDEO_QUESTION.explanation}`
-        : `Not quite. The correct answer is: "${AFTER_VIDEO_QUESTION.options[AFTER_VIDEO_QUESTION.correctIndex]}". ${AFTER_VIDEO_QUESTION.explanation}`,
+        ? `Correct. ${afterVideoQuestion.explanation}`
+        : `Not quite. The standard procedure is: "${afterVideoQuestion.options[afterVideoQuestion.correctIndex]}". ${afterVideoQuestion.explanation}`,
       response: {
         type: 'evaluation',
         message: correct ? 'Correct!' : 'Incorrect',
         correct,
-        explanation: AFTER_VIDEO_QUESTION.explanation,
+        explanation: afterVideoQuestion.explanation,
       },
     })
   }
 
-  const isCorrect = submitted && selectedOption === AFTER_VIDEO_QUESTION.correctIndex
+  const isCorrect = submitted && selectedOption === afterVideoQuestion.correctIndex
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '40px 24px' }}>
@@ -89,17 +78,17 @@ export function AIQuestionPhase({ scenario, onContinue }: Props) {
               <Bot size={14} /> AI Safety Assessment
             </div>
             <p style={{ fontSize: 16, fontWeight: 600, marginBottom: 24, lineHeight: 1.5 }}>
-              {AFTER_VIDEO_QUESTION.question}
+              {afterVideoQuestion.question}
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {AFTER_VIDEO_QUESTION.options.map((opt, i) => {
+              {afterVideoQuestion.options.map((opt, i) => {
                 let borderColor = 'var(--sg-border)'
                 let bg = 'var(--sg-bg-elevated)'
                 let color = 'var(--sg-text-secondary)'
 
                 if (submitted) {
-                  if (i === AFTER_VIDEO_QUESTION.correctIndex) {
+                  if (i === afterVideoQuestion.correctIndex) {
                     borderColor = 'rgba(34,197,94,0.5)'
                     bg = 'var(--sg-safe-bg)'
                     color = 'var(--sg-safe)'
@@ -123,7 +112,7 @@ export function AIQuestionPhase({ scenario, onContinue }: Props) {
                       background: bg, border: `1px solid ${borderColor}`,
                       borderRadius: 8, padding: '14px 16px',
                       textAlign: 'left', cursor: submitted ? 'default' : 'pointer',
-                      color, fontSize: 14, fontWeight: i === selectedOption || (submitted && i === AFTER_VIDEO_QUESTION.correctIndex) ? 600 : 400,
+                      color, fontSize: 14, fontWeight: i === selectedOption || (submitted && i === afterVideoQuestion.correctIndex) ? 600 : 400,
                       transition: 'all 0.15s', fontFamily: 'inherit',
                     }}
                   >
@@ -149,7 +138,7 @@ export function AIQuestionPhase({ scenario, onContinue }: Props) {
                 {isCorrect ? 'Standard Procedure Confirmed' : 'Safety Deviation Identified'}
               </div>
               <p style={{ fontSize: 13, color: 'var(--sg-text-secondary)', lineHeight: 1.6 }}>
-                {AFTER_VIDEO_QUESTION.explanation}
+                {afterVideoQuestion.explanation}
               </p>
             </div>
           )}
