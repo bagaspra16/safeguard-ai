@@ -952,7 +952,11 @@ export const ALL_SCENARIOS: Scenario[] = [
 ]
 
 export function getScenarioById(id: string): Scenario | undefined {
-  return ALL_SCENARIOS.find((s) => s.id === id) || ALL_SCENARIOS[0]
+  const exact = ALL_SCENARIOS.find((s) => s.id === id)
+  if (exact) return exact
+  const byPartial = ALL_SCENARIOS.find((s) => s.id.includes(id) || id.includes(s.id) || s.category.includes(id))
+  if (byPartial) return byPartial
+  return ALL_SCENARIOS[0]
 }
 
 // ─── Scenario-Specific Post-Video Incident Questions ──────────────────────────
@@ -1067,4 +1071,177 @@ export function getAfterVideoQuestion(scenario: Scenario): PostVideoQuestion {
     explanation: `The critical error was: ${scenario.negativeCase.description}. Safe operational protocol requires: ${scenario.positiveCase.description}.`,
   }
 }
+
+// ─── Agentic Assessment Questions (3 per scenario, used before 3D simulation) ─
+
+export interface AgenticQuestion {
+  id: string
+  question: string
+  options: string[]
+  correctIndex: number
+  explanation: string
+  category: string
+  difficulty: 'easy' | 'medium' | 'hard'
+}
+
+export const AGENTIC_QUESTIONS_MAP: Record<string, AgenticQuestion[]> = {
+  'forklift-blind-corner-001': [
+    {
+      id: 'fk-a1',
+      category: 'Hazard Identification',
+      difficulty: 'medium',
+      question: 'In the incident video, what created the primary visibility blind spot at the intersection?',
+      options: [
+        'Poor warehouse lighting and shadows cast by overhead fixtures',
+        'A high-density shelving unit positioned directly at the corner, blocking line-of-sight in both directions',
+        'The forklift operator was distracted by a two-way radio call',
+        'The pedestrian was wearing earphones and could not hear the forklift horn',
+      ],
+      correctIndex: 1,
+      explanation:
+        'OSHA 1910.178(e)(1) requires physical mirrors, signage, or guardrails at blind intersections. The shelving unit created a 0° visibility window, leaving both parties unaware of each other until they were inside the 4-meter danger zone.',
+    },
+    {
+      id: 'fk-a2',
+      category: 'Emergency Protocol',
+      difficulty: 'hard',
+      question: 'A 3,000 kg forklift traveling at 8 km/h requires approximately how much stopping distance on a dry concrete warehouse floor?',
+      options: [
+        'Less than 0.5 meters — electric forklifts have regenerative braking',
+        'Approximately 4 meters — far beyond typical pedestrian reaction distance',
+        'About 1.5 meters if emergency brakes are applied immediately',
+        'Over 10 meters — warehouse floors are too slippery for effective braking',
+      ],
+      correctIndex: 1,
+      explanation:
+        'A loaded 3,000 kg forklift at 8 km/h requires 3.5–4.5 meters to stop on dry concrete. This exceeds average human reaction distance (~2 m), which is why pedestrian exclusion zones and stop-and-check protocols are mandatory.',
+    },
+    {
+      id: 'fk-a3',
+      category: 'Standard Procedure',
+      difficulty: 'medium',
+      question: 'What is the correct pedestrian behavior mandated by OSHA 1910.178 when approaching any warehouse intersection?',
+      options: [
+        'Maintain walking pace while actively scanning for forklift lights and reflective markings',
+        'Come to a complete stop 1 meter before the intersection line, visually clear both directions, make eye contact with any operators, then proceed',
+        'Sound a verbal warning ("Passing!") and proceed at reduced walking speed',
+        'Check your phone or radio for forklift traffic status updates before crossing',
+      ],
+      correctIndex: 1,
+      explanation:
+        'The Stop-Look-Proceed protocol is non-negotiable at forklift intersections. Full stop, two-direction visual sweep, and confirmed operator eye contact are all required before stepping into any vehicle aisle. Speed reduction alone is insufficient.',
+    },
+  ],
+
+  'industrial-fire-005': [
+    {
+      id: 'fi-a1',
+      category: 'Fire Classification',
+      difficulty: 'medium',
+      question: 'The fire in the video originated in a paint solvent storage area. What fire class does this represent and which suppression agent is correct?',
+      options: [
+        'Class A (ordinary combustibles) — requires pressurized water sprinkler activation',
+        'Class B (flammable liquids) — requires CO₂ or dry chemical powder, NOT water',
+        'Class C (electrical) — requires halon or clean-agent system activation',
+        'Class D (combustible metals) — requires dry sand or specialized Class D extinguisher',
+      ],
+      correctIndex: 1,
+      explanation:
+        'Flammable paint solvents (toluene, xylene, acetone) are Class B fuels. Water application causes violent steam explosion and solvent splatter, spreading fire across a wider area. NFPA 10 mandates CO₂ or dry chemical for Class B industrial fires.',
+    },
+    {
+      id: 'fi-a2',
+      category: 'Emergency Response',
+      difficulty: 'hard',
+      question: 'During the fire incident, what is the correct RACE protocol sequence that was violated?',
+      options: [
+        'Rescue → Attack → Contain → Evacuate — the worker skipped Attack and went directly to Evacuate',
+        'Rescue anyone in immediate danger → Alert/Alarm → Contain the fire → Evacuate — the worker skipped Alert and attempted suppression without alarming others',
+        'Report → Assemble → Control → Evacuate — the worker attempted to control without reporting first',
+        'Rescue → Assess → Contain → Extinguish — the worker only partially completed Contain before evacuating',
+      ],
+      correctIndex: 1,
+      explanation:
+        'RACE: Rescue (anyone in immediate danger), Alert (pull manual alarm, notify fire department), Contain (close fire doors to slow spread), Evacuate. The worker bypassed "Alert", leaving other workers uninformed, and attempted improper water suppression on a Class B fire.',
+    },
+    {
+      id: 'fi-a3',
+      category: 'Explosion Risk',
+      difficulty: 'hard',
+      question: 'At what concentration range do paint solvent vapors become explosively flammable in air?',
+      options: [
+        'Only above 50% concentration — industrial ventilation normally prevents this level',
+        'Between 1% and 7% vapor concentration (LEL to UEL) — easily reached in poorly ventilated storage areas',
+        'Only when ignition sources exceed 800°C surface temperature',
+        'Concentrations above 25% are required — standard HVAC systems prevent this',
+      ],
+      correctIndex: 1,
+      explanation:
+        'Most paint solvents (toluene LEL 1.1%, UEL 7.1%) become explosive between just 1–7% air concentration — achievable rapidly in enclosed storage. A single static spark or electrical arc is sufficient to trigger detonation within this range.',
+    },
+  ],
+
+  'construction-fall-006': [
+    {
+      id: 'cf-a1',
+      category: 'Fall Protection',
+      difficulty: 'medium',
+      question: 'At what height above a lower level does OSHA 1926.502 mandate 100% fall protection for construction workers?',
+      options: [
+        '10 feet (3 meters) — only when working near open floor holes',
+        '6 feet (1.8 meters) — for all construction activities near unprotected edges',
+        '15 feet (4.5 meters) — only applicable to structural steel erection',
+        '4 feet (1.2 meters) — but only when working on scaffolding without guardrails',
+      ],
+      correctIndex: 1,
+      explanation:
+        'OSHA 1926.502(d) is absolute: 100% fall protection is mandatory above 6 feet in construction. At 50 meters, the fall in this scenario was unsurvivable. The 6-foot threshold covers all construction activities — no exceptions for "quick tasks".',
+    },
+    {
+      id: 'cf-a2',
+      category: 'Equipment Standards',
+      difficulty: 'hard',
+      question: 'What is "100% continuous tie-off" and how is it correctly achieved on elevated steel structures?',
+      options: [
+        'Wearing a full-body harness at all times, even when not near an edge',
+        'Using dual self-retracting lanyards in a "leapfrog" method so one is always attached while the other is moved to the next anchor point',
+        'Tying off the lanyard once at the start of the shift to a single certified anchor point',
+        'Attaching to a horizontal lifeline that spans the entire work area',
+      ],
+      correctIndex: 1,
+      explanation:
+        'Continuous tie-off means zero moments without fall protection. The dual-lanyard leapfrog technique: lanyard A clipped, advance to new position, clip lanyard B, then release lanyard A. In the video, the worker disconnected both simultaneously — creating a 100% unprotected window at 50 meters.',
+    },
+    {
+      id: 'cf-a3',
+      category: 'Risk Assessment',
+      difficulty: 'medium',
+      question: 'On a 50-meter elevated steel girder walk, what primary environmental factor most increases fall risk beyond the height itself?',
+      options: [
+        'Noise from construction equipment affecting worker concentration',
+        'Narrow beam width combined with surface contamination (dew, dust) dramatically reducing friction and foot stability',
+        'Lack of guardrails on the surrounding ground level below',
+        'Insufficient PPE (hard hat, hi-vis) limiting peripheral vision',
+      ],
+      correctIndex: 1,
+      explanation:
+        'Steel girder surfaces (often 200–300mm wide) with any moisture or debris reduce friction coefficient by 40–60%. Combined with balance requirements at height, this creates a fall risk multiplier. Surface inspection and anti-slip footwear (ASTM F2413 rated) are mandatory before any elevated girder walk.',
+    },
+  ],
+}
+
+export function getAgenticQuestions(scenario: Scenario): AgenticQuestion[] {
+  if (AGENTIC_QUESTIONS_MAP[scenario.id]) {
+    return AGENTIC_QUESTIONS_MAP[scenario.id]
+  }
+  if (scenario.category === 'fire_safety') {
+    return AGENTIC_QUESTIONS_MAP['industrial-fire-005']
+  }
+  if (scenario.category === 'construction_safety') {
+    return AGENTIC_QUESTIONS_MAP['construction-fall-006']
+  }
+  // Fallback to forklift questions for warehouse/other categories
+  return AGENTIC_QUESTIONS_MAP['forklift-blind-corner-001']
+}
+
 
