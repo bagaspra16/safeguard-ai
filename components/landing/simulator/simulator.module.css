@@ -1,0 +1,164 @@
+/* ─── Hero simulator ─────────────────────────────────────────────────────────── */
+
+.root {
+  --sim-brand: #f59e0b;
+  --sim-brand-text: #b45309;
+  --sim-brand-soft: rgba(245, 158, 11, 0.12);
+  --sim-brand-border: rgba(245, 158, 11, 0.35);
+
+  position: absolute;
+  inset: 0;
+}
+
+/* ─── Loading placeholder ────────────────────────────────────────────────────── */
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-bottom: 12rem;
+  background: linear-gradient(to bottom, transparent 70%, rgba(183, 166, 140, 0.25) 100%);
+  color: #6b7280;
+  font-size: 0.8125rem;
+}
+
+.placeholderDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--sim-brand);
+  animation: sim-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes sim-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+
+/* ─── Controls ───────────────────────────────────────────────────────────────── */
+
+.hud {
+  position: absolute;
+  left: 50%;
+  bottom: 1.5rem;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  transform: translateX(-50%);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #374151;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.statusDot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: #9ca3af;
+}
+
+.normal .statusDot {
+  background: #9ca3af;
+}
+
+.warning {
+  border-color: var(--sim-brand-border);
+  color: var(--sim-brand-text);
+}
+
+.warning .statusDot {
+  background: var(--sim-brand);
+  animation: sim-pulse 1s ease-in-out infinite;
+}
+
+.detected {
+  border-color: var(--sim-brand);
+  background: var(--sim-brand);
+  color: #111827;
+  font-weight: 600;
+}
+
+.detected .statusDot {
+  background: #111827;
+}
+
+/* ─── Labels anchored to the 3D scene ────────────────────────────────────────── */
+
+.tag {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 10px;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  background: rgba(17, 24, 39, 0.92);
+  white-space: nowrap;
+  transform: translate(calc(-100% - 40px), -50%);
+  animation: sim-tag-in 0.25s ease-out;
+}
+
+.tagLabel {
+  color: #f59e0b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.tagDetail {
+  color: #e5e7eb;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.measure {
+  padding: 1px 6px;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+@keyframes sim-tag-in {
+  from {
+    opacity: 0;
+    transform: translate(calc(-100% - 40px), -50%) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: translate(calc(-100% - 40px), -50%) scale(1);
+  }
+}
