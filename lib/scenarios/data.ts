@@ -1,4 +1,4 @@
-import type { Scenario } from '@/types'
+import type { Scenario, ImmersiveScenario, ImmersiveVideoTrack } from '@/types'
 
 // ─── Forklift Blind Corner — Primary MVP Scenario ─────────────────────────────
 
@@ -98,6 +98,210 @@ export const FORKLIFT_BLIND_CORNER_SCENARIO: Scenario = {
 
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
+}
+
+// ─── Forklift Scenario — SIVS Visual Identity (§27–30, §45) ─────────────────
+
+const FORKLIFT_VISUAL_IDENTITY = {
+  environment: {
+    type: 'large modern warehouse',
+    floor: 'industrial concrete with yellow painted pedestrian lanes',
+    lighting: 'overhead LED',
+    structures: [
+      'metal industrial shelving (height 3m)',
+      'warehouse blind intersection',
+      'yellow painted crossing zones',
+      'forklift charging station visible in background',
+    ],
+    pedestrianPath: 'Yellow painted, 1.2-metre-wide designated pedestrian path',
+    vehicleZone: 'Yellow and black striped forklift crossing zone at intersection',
+  },
+  character: {
+    role: 'warehouse worker',
+    ppe: ['high-visibility yellow vest', 'white safety helmet', 'safety boots', 'work gloves'],
+    gender: 'neutral' as const,
+    approximateAge: 'mid-30s',
+  },
+  camera: {
+    height: 1.65,
+    perspective: 'first_person' as const,
+    projection: 'equirectangular' as const,
+    motion: ['standing', 'slow forward walking', 'controlled stop'],
+  },
+  lighting: {
+    type: 'Consistent overhead LED industrial',
+    timeOfDay: 'daytime (no natural light)',
+    consistent: true as const,
+  },
+  colorProfile: 'Cool industrial whites and greys with yellow safety marking accents',
+  audio: {
+    ambience: 'Industrial warehouse background hum, air conditioning, distant pallet movement',
+    hazardSounds: [
+      'electric forklift motor hum approaching from right',
+      'forklift reverse beeper at 2m interval',
+      'metal shelving ambient creak',
+      'footsteps on concrete',
+    ],
+  },
+}
+
+// SIVS §45 — Master Scenario Specification
+const FORKLIFT_SIVS_MASTER_SPEC = {
+  scenarioId: 'forklift-blind-corner-001',
+  negativeBehavior: {
+    action: 'continue_without_checking',
+    description: 'The employee walks at normal pace toward the blind intersection, does not slow down, does not look, does not stop before the floor marking, and enters the forklift travel path without checking.',
+  },
+  positiveBehavior: {
+    action: 'stop_check_wait_proceed',
+    description: 'The employee slows on approach, stops completely before the yellow intersection line, looks left then right using full body turn, identifies the approaching forklift, establishes eye contact with the operator, waits for the forklift to fully pass, then proceeds safely across the marking.',
+  },
+  hazard: {
+    type: 'electric forklift, 3000 kg, 8 km/h',
+    location: 'right_side_perpendicular_corridor',
+    importance: 'primary' as const,
+  },
+}
+
+// SIVS §17 — Standard Video Metadata
+const FORKLIFT_SIVS_METADATA = {
+  projection: 'equirectangular' as const,
+  stereo: 'mono' as const,
+  resolution: '5760x2880',
+  fps: 30,
+  duration: 20,
+  cameraHeight: 1.65,
+  initialOrientation: { yaw: 0, pitch: 0, roll: 0 },
+  webXRCompatible: true,
+  audio: 'stereo' as const,
+}
+
+// SIVS §13 — Spatial Interaction Zones
+const FORKLIFT_SPATIAL_ZONES = [
+  {
+    id: 'zone-forklift-right',
+    type: 'hazard' as const,
+    yaw: 90,   // 90° to the right from forward direction
+    pitch: 0,
+    angleDeg: 30,
+    label: 'Approaching Forklift',
+  },
+  {
+    id: 'zone-intersection-ahead',
+    type: 'hazard' as const,
+    yaw: 0,    // directly ahead
+    pitch: -10,
+    angleDeg: 25,
+    label: 'Blind Intersection',
+  },
+  {
+    id: 'zone-pedestrian-path',
+    type: 'information' as const,
+    yaw: 0,
+    pitch: -20,
+    angleDeg: 20,
+    label: 'Pedestrian Floor Marking',
+  },
+]
+
+const FORKLIFT_NEGATIVE_TRACK = {
+  url: '/demo/videos/forklift-negative.mp4',
+  is360: false,                         // will become true when real 360° asset is ready
+  label: 'UNSAFE BEHAVIOR — Incident at Blind Corner',
+  caseType: 'negative' as const,
+  sivsMetadata: FORKLIFT_SIVS_METADATA,
+  spatialZones: FORKLIFT_SPATIAL_ZONES,
+  cues: [
+    {
+      id: 'neg-cue-1',
+      atSeconds: 8,
+      type: 'warning' as const,
+      stage: 'recognize' as const,
+      prompt: 'The worker is approaching the intersection. What should they do RIGHT NOW?',
+      options: [
+        'Continue at the same pace — the aisle looks clear',
+        'Slow down and prepare to stop before the corner',
+        'Speed up to get past the junction quickly',
+        'Look at their phone briefly — forklifts always honk',
+      ],
+      correctOptionIndex: 1,
+      explanation: 'At any blind corner, OSHA 1910.178 requires slowing and preparing to stop. The shelving unit eliminates your sight-line — the forklift may already be around the corner.',
+      severity: 'high' as const,
+      spatialDirection: { yaw: 0, pitch: -5, toleranceDeg: 30 },
+    },
+    {
+      id: 'neg-cue-2',
+      atSeconds: 18,
+      type: 'question' as const,
+      stage: 'reflect' as const,
+      prompt: 'The worker enters the intersection without stopping. What is the MOST dangerous outcome that is now possible?',
+      options: [
+        'The worker trips on the floor marking',
+        'The forklift driver sees them and stops in time',
+        'A 3,000 kg forklift at 8 km/h collides — 4-metre stopping distance is not enough',
+        'The alarm system triggers automatically',
+      ],
+      correctOptionIndex: 2,
+      explanation: 'A 3,000 kg forklift at 8 km/h requires approximately 4 metres to stop. Once a pedestrian enters the path at close range, physics prevents safe braking.',
+      severity: 'critical' as const,
+      spatialDirection: { yaw: 90, pitch: 0, toleranceDeg: 25 },
+    },
+  ],
+}
+
+const FORKLIFT_POSITIVE_TRACK = {
+  url: '/demo/videos/forklift-positive.mp4',
+  is360: false,
+  label: 'CORRECT PROCEDURE — Stop-and-Check Protocol',
+  caseType: 'positive' as const,
+  sivsMetadata: FORKLIFT_SIVS_METADATA,
+  spatialZones: FORKLIFT_SPATIAL_ZONES,
+  cues: [
+    {
+      id: 'pos-cue-1',
+      atSeconds: 6,
+      type: 'observation' as const,
+      stage: 'recognize' as const,
+      prompt: 'The worker has stopped before the corner line. Why is stopping BEFORE the line critical, not just slowing down?',
+      options: [
+        'It is only a courtesy, not a safety requirement',
+        'Stopping before the line ensures you are outside the forklift sweep radius before looking',
+        'The line is purely decorative',
+        'Stopping is only required when a forklift is visible',
+      ],
+      correctOptionIndex: 1,
+      explanation: 'The floor line marks the outer edge of the forklift travel arc. Stopping before it means your body is physically outside the danger zone while you check — not partially inside it.',
+      severity: 'medium' as const,
+      spatialDirection: { yaw: 0, pitch: -15, toleranceDeg: 20 },
+    },
+    {
+      id: 'pos-cue-2',
+      atSeconds: 16,
+      type: 'question' as const,
+      stage: 'decide' as const,
+      prompt: 'The worker looks left, right, and makes eye contact with the forklift operator before crossing. Which of these is the final correct action?',
+      options: [
+        'Immediately walk across while the driver is still approaching',
+        'Wave quickly and assume they will stop',
+        'Wait for a clear hand signal or head nod from the operator, then proceed',
+        'Run quickly to minimize time in the intersection',
+      ],
+      correctOptionIndex: 2,
+      explanation: 'Eye contact alone is not confirmation. Always wait for the operator to give a clear, deliberate signal before crossing. Forklifts can begin moving again unexpectedly.',
+      severity: 'medium' as const,
+      spatialDirection: { yaw: 90, pitch: 0, toleranceDeg: 25 },
+    },
+  ],
+}
+
+export const FORKLIFT_IMMERSIVE_SCENARIO = {
+  ...FORKLIFT_BLIND_CORNER_SCENARIO,
+  immersiveTracks: {
+    negative: FORKLIFT_NEGATIVE_TRACK,
+    positive: FORKLIFT_POSITIVE_TRACK,
+  },
+  visualIdentity: FORKLIFT_VISUAL_IDENTITY,
+  sivsMasterSpec: FORKLIFT_SIVS_MASTER_SPEC,
 }
 
 // ─── Quiz Questions for this Scenario ─────────────────────────────────────────

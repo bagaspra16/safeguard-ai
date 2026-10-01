@@ -1,0 +1,704 @@
+/* ─── Landing page (light theme, layout based on Cruip "Simple Light") ─────── */
+
+.root {
+  /* Brand orange — derived from --sg-accent (#f59e0b) */
+  --lp-brand: #f59e0b;
+  --lp-brand-hover: #d97706;
+  --lp-brand-text: #b45309;
+  --lp-brand-soft: rgba(245, 158, 11, 0.1);
+  --lp-brand-border: rgba(245, 158, 11, 0.3);
+
+  --lp-bg: #f9fafb;
+  --lp-line: rgba(203, 213, 225, 0.8);
+
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: var(--lp-bg);
+  color: #111827;
+  letter-spacing: -0.017em;
+}
+
+.container {
+  width: 100%;
+  max-width: 72rem;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+
+.narrow {
+  max-width: 48rem;
+}
+
+/* Gradient hairlines above and below an element */
+.hairline {
+  border-block: 1px solid transparent;
+  border-image: linear-gradient(to right, transparent, var(--lp-line), transparent) 1;
+}
+
+.icon {
+  flex-shrink: 0;
+  color: var(--lp-brand);
+}
+
+.accent {
+  color: var(--lp-brand);
+}
+
+/* ─── Badge ──────────────────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--lp-brand-border);
+  border-radius: 4px;
+  background: var(--lp-brand-soft);
+  color: var(--lp-brand-text);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.badgeOnDark {
+  color: var(--lp-brand);
+}
+
+/* ─── Buttons ────────────────────────────────────────────────────────────────── */
+
+.btn,
+.btnSm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.5715;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  transition: all 0.15s ease;
+}
+
+.btn {
+  padding: 11px 1rem;
+}
+
+.btnSm {
+  padding: 5px 0.75rem;
+}
+
+.btnPrimary {
+  background: linear-gradient(to top, var(--lp-brand-hover), var(--lp-brand)) bottom / 100% 100%;
+  color: #111827;
+}
+
+.btnPrimary:hover {
+  background-size: 100% 150%;
+}
+
+.btnLight {
+  background: #fff;
+  color: #1f2937;
+}
+
+.btnLight:hover {
+  background: #f9fafb;
+}
+
+.arrow {
+  display: inline-block;
+  opacity: 0.6;
+  letter-spacing: normal;
+  transition: transform 0.15s ease;
+}
+
+.btn:hover .arrow {
+  transform: translateX(2px);
+}
+
+.btnRow {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 20rem;
+  margin-inline: auto;
+}
+
+/* ─── Header ─────────────────────────────────────────────────────────────────── */
+
+.header {
+  position: fixed;
+  top: 0.5rem;
+  left: 0;
+  right: 0;
+  z-index: 30;
+}
+
+.headerBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  height: 3.5rem;
+  padding-inline: 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.03), 0 4px 6px -4px rgba(0, 0, 0, 0.03);
+  backdrop-filter: blur(4px);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logoMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--lp-brand);
+  color: #000;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.brandName {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.navLinks {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.navLink {
+  display: none;
+  color: #4b5563;
+  font-size: 0.875rem;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.navLink:hover {
+  color: #111827;
+}
+
+/* ─── Hero ───────────────────────────────────────────────────────────────────── */
+
+.hero {
+  position: relative;
+}
+
+.heroCanvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* Blurs the simulation behind the hero text and fades out above the action */
+.heroOverlay {
+  position: absolute;
+  --fade: linear-gradient(
+    to bottom,
+    #000 calc(100% - 24rem),
+    rgba(0, 0, 0, 0.55) calc(100% - 20.5rem),
+    rgba(0, 0, 0, 0.18) calc(100% - 17.5rem),
+    transparent calc(100% - 15rem)
+  );
+  /* Everything around the work site gets the same treatment, leaving a round clear
+     spot on the scaffold. --s is the on-screen size of the scene (see stageView.ts),
+     --cy the height of the site centre above the bottom of the hero. */
+  --s: 332px;
+  --cy: 168px;
+  --focus: radial-gradient(
+    ellipse calc(var(--s) * 0.8) calc(var(--s) * 0.62) at calc(50% + var(--s) * 0.085) calc(100% - var(--cy)),
+    transparent 60%,
+    rgba(0, 0, 0, 0.5) 80%,
+    #000 100%
+  );
+
+  inset: 0;
+  pointer-events: none;
+  /* Dark tint so the clear simulation below reads as the focus */
+  background: rgba(17, 24, 39, 0.46);
+  -webkit-backdrop-filter: blur(2.5px);
+  backdrop-filter: blur(2.5px);
+  -webkit-mask-image: var(--fade), var(--focus);
+  mask-image: var(--fade), var(--focus);
+}
+
+/* Blends the bottom of the simulation into the page */
+.hero::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 5rem;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(249, 250, 251, 0), var(--lp-bg));
+}
+
+.heroContent {
+  position: relative;
+  z-index: 10;
+  padding-top: 8rem;
+  padding-bottom: 21rem;
+  text-align: center;
+  pointer-events: none;
+}
+
+.heroContent a {
+  pointer-events: auto;
+}
+
+.heroBadge {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+  padding-block: 6px;
+}
+
+.heroBadge .badge {
+  background: rgba(245, 158, 11, 0.18);
+  color: var(--lp-brand);
+}
+
+/* Hero text sits on the dark tint */
+.heroTitle {
+  color: #fff;
+  margin-bottom: 1.5rem;
+  font-size: 3rem;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.037em;
+}
+
+.heroLead {
+  max-width: 48rem;
+  margin: 0 auto 1rem;
+  color: #e5e7eb;
+  font-size: 1.125rem;
+  line-height: 1.5;
+}
+
+.heroSub {
+  margin-bottom: 2rem;
+  color: #d1d5db;
+  font-size: 0.875rem;
+}
+
+/* ─── Highlights strip ───────────────────────────────────────────────────────── */
+
+.highlights {
+  padding-bottom: 3rem;
+}
+
+.highlightRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem 2rem;
+  padding-block: 1.25rem;
+}
+
+.highlight {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #374151;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* ─── Sections ───────────────────────────────────────────────────────────────── */
+
+.section {
+  padding-block: 3rem;
+  scroll-margin-top: 5rem;
+}
+
+.sectionDark {
+  background: #111827;
+}
+
+.sectionHeader {
+  max-width: 48rem;
+  margin-inline: auto;
+  padding-bottom: 3rem;
+  text-align: center;
+}
+
+.sectionHeader .badge {
+  margin-bottom: 1rem;
+}
+
+.sectionTitle {
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 1.3333;
+  letter-spacing: -0.037em;
+}
+
+.sectionLead {
+  margin-top: 1rem;
+  color: #374151;
+  font-size: 1.125rem;
+  line-height: 1.5;
+}
+
+.sectionDark .sectionTitle {
+  color: #e5e7eb;
+}
+
+.sectionDark .sectionLead {
+  color: #9ca3af;
+}
+
+/* ─── Features grid ──────────────────────────────────────────────────────────── */
+
+.featureGrid {
+  display: grid;
+  overflow: hidden;
+}
+
+.featureCell {
+  position: relative;
+  padding: 1.5rem;
+}
+
+.featureCell::before,
+.featureCell::after {
+  content: '';
+  position: absolute;
+  background: #1f2937;
+}
+
+.featureCell::before {
+  top: 0;
+  left: -1px;
+  width: 1px;
+  height: 100vh;
+}
+
+.featureCell::after {
+  top: -1px;
+  left: 0;
+  width: 100vw;
+  height: 1px;
+}
+
+.featureTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  color: #e5e7eb;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: -0.017em;
+}
+
+.featureDesc {
+  color: #9ca3af;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* ─── Training flow ──────────────────────────────────────────────────────────── */
+
+.step {
+  position: relative;
+  display: flex;
+  gap: 1.5rem;
+  padding-bottom: 1.5rem;
+}
+
+.step::before {
+  content: '';
+  position: absolute;
+  top: 3rem;
+  bottom: 0;
+  left: 1.5rem;
+  width: 1px;
+  background: #e5e7eb;
+}
+
+.step:last-child {
+  padding-bottom: 0;
+}
+
+.step:last-child::before {
+  display: none;
+}
+
+.stepNumber {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border: 1px solid var(--lp-brand-border);
+  border-radius: 0.75rem;
+  background: var(--lp-brand-soft);
+  color: var(--lp-brand-text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.stepBody {
+  padding-top: 4px;
+}
+
+.stepLabel {
+  margin-bottom: 2px;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.stepDesc {
+  color: #4b5563;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* ─── CTA ────────────────────────────────────────────────────────────────────── */
+
+.cta {
+  padding-bottom: 3rem;
+}
+
+.ctaCard {
+  position: relative;
+  overflow: hidden;
+  padding: 3rem 1rem;
+  border-radius: 1rem;
+  background: #111827;
+  text-align: center;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+.ctaGlow {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 30rem;
+  height: 14rem;
+  border: 20px solid var(--lp-brand);
+  border-radius: 9999px;
+  filter: blur(64px);
+  transform: translate(-50%, 50%);
+  pointer-events: none;
+}
+
+.ctaBody {
+  position: relative;
+}
+
+.ctaTitle {
+  margin-bottom: 1rem;
+  color: #e5e7eb;
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 1.3333;
+  letter-spacing: -0.037em;
+}
+
+.ctaLead {
+  margin-bottom: 2rem;
+  color: #9ca3af;
+  font-size: 1rem;
+}
+
+/* ─── Footer ─────────────────────────────────────────────────────────────────── */
+
+.footerInner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+  padding-block: 2rem;
+  border-top: 1px solid transparent;
+  border-image: linear-gradient(to right, transparent, #e2e8f0, transparent) 1;
+  color: #4b5563;
+  font-size: 0.875rem;
+}
+
+.footerNote {
+  font-size: 0.8125rem;
+}
+
+.footerSafe {
+  color: #16a34a;
+}
+
+/* ─── Scroll reveal and hover ────────────────────────────────────────────────── */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.revealVisible {
+  opacity: 1;
+  transform: none;
+}
+
+.featureCell {
+  transition: background 0.25s ease;
+}
+
+.featureCell:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.featureCell .icon {
+  transition: transform 0.25s ease;
+}
+
+.featureCell:hover .icon {
+  transform: scale(1.25);
+}
+
+.stepNumber {
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.step:hover .stepNumber {
+  background: var(--lp-brand);
+  color: #111827;
+  transform: scale(1.06);
+}
+
+.stepLabel {
+  transition: color 0.2s ease;
+}
+
+.step:hover .stepLabel {
+  color: var(--lp-brand-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ─── Breakpoints ────────────────────────────────────────────────────────────── */
+
+@media (min-width: 640px) {
+  .container {
+    padding-inline: 1.5rem;
+  }
+
+  .navLink {
+    display: inline;
+  }
+
+  .btnRow {
+    flex-direction: row;
+    justify-content: center;
+    max-width: none;
+  }
+
+  .featureGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 768px) {
+  .header {
+    top: 1.5rem;
+  }
+
+  .heroOverlay {
+    --fade: linear-gradient(
+      to bottom,
+      #000 24.5rem,
+      rgba(0, 0, 0, 0.55) 29rem,
+      rgba(0, 0, 0, 0.18) 33rem,
+      transparent 36.5rem
+    );
+    --s: clamp(300px, (max(100vh, 46rem) - 520px) / 0.63, 680px);
+    --cy: calc(var(--s) * 0.33);
+  }
+
+  /* Hero fits the viewport so the simulation is visible without scrolling */
+  .hero {
+    height: 100vh;
+    height: 100svh;
+    min-height: 46rem;
+  }
+
+  .heroContent {
+    padding-top: 7.5rem;
+    padding-bottom: 0;
+  }
+
+  .heroTitle {
+    font-size: 4rem;
+  }
+
+  .highlights,
+  .cta {
+    padding-bottom: 5rem;
+  }
+
+  .section {
+    padding-block: 5rem;
+  }
+
+  .sectionHeader {
+    padding-bottom: 4rem;
+  }
+
+  .sectionTitle,
+  .ctaTitle {
+    font-size: 2.25rem;
+    line-height: 1.2777;
+  }
+
+  .featureCell {
+    padding: 2.5rem;
+  }
+
+  .ctaCard {
+    padding: 5rem 3rem;
+  }
+
+  .ctaLead {
+    margin-bottom: 3rem;
+  }
+
+  .footerInner {
+    padding-block: 3rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .featureGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

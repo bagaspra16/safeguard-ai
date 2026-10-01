@@ -1,15 +1,19 @@
 'use client'
 
 import { useState } from 'react'
+<<<<<<< HEAD
 import Link from 'next/link'
+=======
+>>>>>>> bc01e443625d7e292f632591ecb8e523bea7a446
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
-  BookOpen,
+  Eye,
   Cpu,
   Users,
   BarChart3,
   Settings,
+<<<<<<< HEAD
   Shield,
   LogOut,
   Bell,
@@ -20,26 +24,63 @@ import {
   Sun,
   Moon,
   ChevronDown,
+=======
+  ChevronDown,
+  ChevronUp,
+>>>>>>> bc01e443625d7e292f632591ecb8e523bea7a446
 } from 'lucide-react'
-
-const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Overview', icon: LayoutDashboard, exact: true },
-  { href: '/dashboard/training', label: 'Training', icon: BookOpen },
-  { href: '/dashboard/scenarios', label: 'Scenarios', icon: Cpu },
-  { href: '/dashboard/employees', label: 'Employees', icon: Users },
-  { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
-  { href: '/dashboard/admin', label: 'Admin', icon: Settings },
-]
+import { Dock, type DockItemData } from '@/components/ui/dock-two'
+import { AnimatePresence, motion } from 'framer-motion'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+<<<<<<< HEAD
   const [isDarkMode, setIsDarkMode] = useState(false)
+=======
+  const [isDockCollapsed, setIsDockCollapsed] = useState(false)
+>>>>>>> bc01e443625d7e292f632591ecb8e523bea7a446
 
-  const isActive = (href: string, exact?: boolean) => {
-    if (exact) return pathname === href
-    return pathname.startsWith(href)
-  }
+  const dockItems: DockItemData[] = [
+    {
+      label: 'Overview',
+      icon: LayoutDashboard,
+      href: '/dashboard',
+      isActive: pathname === '/dashboard',
+    },
+    {
+      label: '3D Training Lab',
+      icon: Eye,
+      href: '/dashboard/training/forklift-blindspot',
+      isActive: pathname.startsWith('/dashboard/training'),
+      badge: '3D',
+    },
+    {
+      label: 'Scenarios',
+      icon: Cpu,
+      href: '/dashboard/scenarios',
+      isActive: pathname.startsWith('/dashboard/scenarios'),
+    },
+    {
+      label: 'Employees',
+      icon: Users,
+      href: '/dashboard/employees',
+      isActive: pathname.startsWith('/dashboard/employees'),
+    },
+    {
+      label: 'Analytics',
+      icon: BarChart3,
+      href: '/dashboard/analytics',
+      isActive: pathname.startsWith('/dashboard/analytics'),
+    },
+    {
+      label: 'Admin',
+      icon: Settings,
+      href: '/dashboard/admin',
+      isActive: pathname.startsWith('/dashboard/admin'),
+    },
+  ]
 
+<<<<<<< HEAD
   // Hide dashboard sidebar and header when user is inside the simulation process
   const isSimulationProcess = pathname.startsWith('/dashboard/training/') && pathname !== '/dashboard/training'
 
@@ -455,6 +496,52 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {children}
           </main>
         </div>
+=======
+  return (
+    <div className="relative h-screen w-screen overflow-hidden bg-black text-[#e8eaf0] antialiased selection:bg-amber-500/30">
+      {/* ───────────────────────────────────────────────────────────────────
+          1. MAIN CONTENT VIEWPORT WITH GENEROUS TOP & BOTTOM CLEARANCE
+      ─────────────────────────────────────────────────────────────────── */}
+      <main className="relative h-full w-full overflow-y-auto overflow-x-hidden pt-8 pb-32 px-5 sm:px-8 md:px-10">
+        {children}
+      </main>
+
+      {/* ───────────────────────────────────────────────────────────────────
+          2. FLOATING DOCK (DOCK-TWO MODEL) WITH ICON-ONLY COLLAPSE TOGGLE
+      ─────────────────────────────────────────────────────────────────── */}
+      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 pointer-events-auto">
+        <AnimatePresence>
+          {!isDockCollapsed && (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              transition={{ type: 'spring', damping: 22, stiffness: 260 }}
+            >
+              <Dock items={dockItems} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Minimal Icon-Only Collapse & Expand Button */}
+        <motion.button
+          layout
+          type="button"
+          onClick={() => setIsDockCollapsed((prev) => !prev)}
+          title={isDockCollapsed ? 'Expand Navigation Dock' : 'Collapse (Fullscreen View)'}
+          aria-label={isDockCollapsed ? 'Expand Navigation Dock' : 'Collapse (Fullscreen View)'}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.92 }}
+          className="size-7.5 rounded-full bg-black/85 border border-white/15 text-zinc-400 hover:text-amber-400 hover:border-amber-400/50 flex items-center justify-center shadow-lg backdrop-blur-xl transition-colors cursor-pointer outline-none"
+        >
+          {isDockCollapsed ? (
+            <ChevronUp className="size-4" />
+          ) : (
+            <ChevronDown className="size-4" />
+          )}
+        </motion.button>
+      </div>
+>>>>>>> bc01e443625d7e292f632591ecb8e523bea7a446
     </div>
   )
 }
