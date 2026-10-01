@@ -1,1491 +1,1229 @@
 'use client'
 
-import { useRef, useState, useEffect, Suspense, useCallback } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { OrbitControls, Html } from '@react-three/drei'
+import { useFrame } from '@react-three/fiber'
+import { Html, useFBO } from '@react-three/drei'
 import type { Scenario } from '@/types'
 import { useSimulationStore } from '@/lib/simulation/store'
-import { SimulationHUD } from './SimulationHUD'
+import { Boxes, Tubes, type BoxItem, type Segment } from '@/components/landing/simulator/parts/Instances'
 import { AITrainerPanel } from './AITrainerPanel'
+import { PlayerRig, createPlayer, type PlayerState } from './sim3d/PlayerRig'
+import { SimCanvas, useSceneTimers, useSimAudio, useStepResults } from './sim3d/SimCanvas'
+import { AnimatedWorker } from './sim3d/AnimatedWorker'
+import { Beacon, PulseRing } from './sim3d/effects'
+import { FloorDecal, LightPanels, Paint } from './sim3d/scenery'
+import { claddingTexture, concreteTexture, signTexture, stencilTexture } from './sim3d/textures'
 import {
-  Glasses,
-  RotateCcw,
-  ShieldAlert,
-  Eye,
-  Crosshair,
-  Volume2,
-  VolumeX,
-  Compass,
-  CheckCircle2,
-  XCircle,
-  UserCheck,
-  MousePointer,
-  AlertOctagon,
-  Award,
-  ShieldCheck,
-  FileCheck,
-} from 'lucide-react'
+  AnimatePresence,
+  BriefingCard,
+  ControlsHint,
+  DebriefCard,
+  DecisionCard,
+  ExplanationCard,
+  HazardCard,
+  MissionPanel,
+  ObjectivePrompt,
+  ScreenFX,
+  SimToolbar,
+  ToastStack,
+  WorldTag,
+  useToasts,
+  type Decision,
+  type DecisionOption,
+  type HazardIntel,
+  type StepDef,
+} from './sim3d/ui'
 
-// ─── Web Audio Procedural Sound Synthesizer ──────────────────────────────────
+// ─── Layout ──────────────────────────────────────────────────────────────────
+// Pedestrian walkway runs along +X at z = 0. The forklift aisle crosses it
+// along Z at x = 0, coming from +Z (the trainee's right) behind tall racking.
 
-class SafetySoundEngine {
-  private ctx: AudioContext | null = null
-  public enabled: boolean = true
+const START: [number, number, number] = [-14, 0, 0]
+const STOP_LINE_X = -3.1
+const WAIT_X = -3.55
+const FORKLIFT_LANE_X = -0.35
+const FORKLIFT_HOLD_Z = 8.2
+const RACK_INNER = 1.6
+const RACK_DEPTH = 1.8
+const RACK_END = 2.0
+const MIRROR_POS = new THREE.Vector3(2.35, 2.95, -1.95)
 
-  private init() {
-    if (!this.ctx && typeof window !== 'undefined') {
-      const AudioCtx =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-      if (AudioCtx) this.ctx = new AudioCtx()
-    }
-  }
+// ─── Drill content ───────────────────────────────────────────────────────────
 
-  playHorn() {
-    if (!this.enabled) return
-    this.init()
-    if (!this.ctx) return
-    try {
-      const t = this.ctx.currentTime
-      const osc1 = this.ctx.createOscillator()
-      const osc2 = this.ctx.createOscillator()
-      const gain = this.ctx.createGain()
+const STEPS: StepDef[] = [
+  { id: 'approach', label: 'Approach the cross-aisle' },
+  { id: 'identify', label: 'Identify the hazards' },
+  { id: 'yield', label: 'Yield to the forklift' },
+  { id: 'cross', label: 'Cross safely' },
+]
 
-      osc1.type = 'sawtooth'
-      osc2.type = 'sawtooth'
-      osc1.frequency.setValueAtTime(380, t)
-      osc2.frequency.setValueAtTime(475, t)
+const HAZARDS: Record<'corner' | 'forklift', HazardIntel> = {
+  corner: {
+    id: 'blind-corner-01',
+    name: 'Blind intersection — racking blocks the view',
+    severity: 'high',
+    whatsWrong:
+      'Fully loaded pallet racking runs right up to the corner. From the walkway you cannot see down the forklift aisle, and the operator cannot see you.',
+    risk: 'A pedestrian and a forklift can arrive at the crossing at the same moment with no warning — the classic struck-by scenario.',
+    control: 'Stop at the red line, use the convex mirror, listen for horns, and only cross once the aisle is confirmed clear.',
+    ref: 'OSHA 1910.178(n)(4) · 1910.176(a)',
+  },
+  forklift: {
+    id: 'forklift-01',
+    name: 'Loaded forklift approaching the crossing',
+    severity: 'critical',
+    whatsWrong:
+      'The mirror shows a counterbalance forklift carrying a full pallet towards the crossing. Its blue warning spot is already moving across the aisle floor.',
+    risk: 'A loaded forklift weighs over 4 tonnes and needs several metres to stop. Its load also blocks part of the operator\'s forward view.',
+    control: 'Pedestrians yield to powered industrial trucks at crossings. Stay behind the line until it has fully passed.',
+    ref: 'OSHA 1910.178(m)(1) · ANSI/ITSDF B56.1',
+  },
+}
 
-      gain.gain.setValueAtTime(0.2, t)
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.65)
+const DECISION: Decision = {
+  id: 'intersection',
+  tag: 'Yield',
+  title: 'A forklift is about to cross in front of you',
+  situation:
+    'You are at the red stop line. The horn sounded twice from behind the racking on your right and the engine note is getting louder. Your next pick location is just across the aisle.',
+  cues: [
+    'Convex mirror: forklift with a raised pallet, travelling towards the crossing',
+    'Blue pedestrian-warning spot sweeping across the aisle floor',
+    'Racking on your right blocks any direct line of sight',
+  ],
+  question: 'What do you do?',
+  options: [
+    {
+      id: 'hurry',
+      label: 'Cross quickly before it arrives',
+      detail: 'It still sounds a few seconds away — a brisk walk gets you across first.',
+      verdict: 'unsafe',
+      outcome: {
+        title: 'Struck by a loaded forklift',
+        happened:
+          'You stepped into the aisle as the forklift came round the racking. The operator saw you too late — even with the brakes locked, the truck could not stop in time.',
+        why: 'Sound is misleading in a warehouse: echoes off the racking hide distance and direction. A loaded forklift at walking-plus speed needs several metres to stop, and the pallet blocks part of the driver\'s view.',
+        rule: 'Operators must slow down and sound the horn at cross aisles where vision is obstructed — and pedestrians must not rely on that alone. At marked crossings the pedestrian stops, checks and yields.',
+        ruleRef: 'OSHA 1910.178(n)(4)',
+        takeaway: 'Never race a forklift. Stop at the line, check the mirror, and let it pass.',
+      },
+    },
+    {
+      id: 'peek',
+      label: 'Step past the rack end to look down the aisle',
+      detail: 'Lean out beyond the racking so you can see the forklift directly.',
+      verdict: 'risky',
+      outcome: {
+        title: 'Near miss — you stepped into the travel path',
+        happened:
+          'To see past the racking you had to step over the stop line and into the aisle. The operator braked hard and stopped half a metre from you.',
+        why: 'The stop line is placed so that you can see — via the mirror — without entering the vehicle path. "Just having a look" puts your body exactly where the forklift is going to be.',
+        rule: 'Pedestrians stay within marked walkways and behind stop lines at vehicle crossings. Aisles must be kept clear and marked so traffic routes stay separated.',
+        ruleRef: 'OSHA 1910.176(a) · 1910.22',
+        takeaway: 'Use the mirror from behind the line — never step into the aisle to look.',
+      },
+    },
+    {
+      id: 'yield',
+      label: 'Stay behind the line, watch the mirror, let it pass',
+      detail: 'Hold position, make eye contact with the operator, and cross only once the aisle is clear.',
+      verdict: 'correct',
+      outcome: {
+        title: 'Textbook yield at a blind crossing',
+        happened:
+          'You held position behind the stop line, tracked the forklift in the mirror and made eye contact with the operator. It passed safely, then you checked both directions and crossed.',
+        why: 'Stopping behind the line keeps you out of the vehicle path while the mirror gives you the view the racking blocks. Eye contact confirms the operator knows you are there.',
+        rule: 'Forklift operators must slow down and sound the horn at cross aisles with obstructed vision; pedestrians yield right of way to powered trucks at crossings.',
+        ruleRef: 'OSHA 1910.178(n)(4) · Site traffic plan',
+        takeaway: 'Stop · Look (mirror) · Listen · Eye contact · Cross only when clear.',
+      },
+    },
+  ],
+}
 
-      osc1.connect(gain)
-      osc2.connect(gain)
-      gain.connect(this.ctx.destination)
+// ─── Procedural warehouse geometry (built once) ─────────────────────────────
 
-      osc1.start(t)
-      osc2.start(t)
-      osc1.stop(t + 0.65)
-      osc2.stop(t + 0.65)
-    } catch {}
-  }
-
-  playRapidHorns() {
-    if (!this.enabled) return
-    this.init()
-    if (!this.ctx) return
-    try {
-      const t = this.ctx.currentTime
-      ;[0, 0.2, 0.4].forEach((offset) => {
-        if (!this.ctx) return
-        const osc = this.ctx.createOscillator()
-        const gain = this.ctx.createGain()
-        osc.type = 'sawtooth'
-        osc.frequency.setValueAtTime(440, t + offset)
-        gain.gain.setValueAtTime(0.22, t + offset)
-        gain.gain.exponentialRampToValueAtTime(0.001, t + offset + 0.15)
-        osc.connect(gain)
-        gain.connect(this.ctx.destination)
-        osc.start(t + offset)
-        osc.stop(t + offset + 0.15)
-      })
-    } catch {}
-  }
-
-  playSlowMoWhoosh() {
-    if (!this.enabled) return
-    this.init()
-    if (!this.ctx) return
-    try {
-      const t = this.ctx.currentTime
-      const osc = this.ctx.createOscillator()
-      const gain = this.ctx.createGain()
-
-      osc.type = 'sine'
-      osc.frequency.setValueAtTime(320, t)
-      osc.frequency.exponentialRampToValueAtTime(70, t + 0.9)
-
-      gain.gain.setValueAtTime(0.22, t)
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.9)
-
-      osc.connect(gain)
-      gain.connect(this.ctx.destination)
-
-      osc.start(t)
-      osc.stop(t + 0.9)
-    } catch {}
-  }
-
-  playSuccessChime() {
-    if (!this.enabled) return
-    this.init()
-    if (!this.ctx) return
-    try {
-      const t = this.ctx.currentTime
-      const freqs = [523.25, 659.25, 783.99, 1046.5]
-      freqs.forEach((f, i) => {
-        if (!this.ctx) return
-        const osc = this.ctx.createOscillator()
-        const gain = this.ctx.createGain()
-        osc.type = 'triangle'
-        osc.frequency.setValueAtTime(f, t + i * 0.08)
-        gain.gain.setValueAtTime(0.12, t + i * 0.08)
-        gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.08 + 0.4)
-        osc.connect(gain)
-        gain.connect(this.ctx.destination)
-        osc.start(t + i * 0.08)
-        osc.stop(t + i * 0.08 + 0.4)
-      })
-    } catch {}
-  }
-
-  playHappyCelebrationSound() {
-    if (!this.enabled) return
-    this.init()
-    if (!this.ctx) return
-    try {
-      const t = this.ctx.currentTime
-      const melody = [
-        { f: 523.25, time: 0, dur: 0.18 }, // C5
-        { f: 659.25, time: 0.18, dur: 0.18 }, // E5
-        { f: 783.99, time: 0.36, dur: 0.22 }, // G5
-        { f: 1046.5, time: 0.58, dur: 0.45 }, // C6
-        { f: 1318.51, time: 0.8, dur: 0.6 }, // E6
-      ]
-
-      melody.forEach((note) => {
-        if (!this.ctx) return
-        const osc = this.ctx.createOscillator()
-        const gain = this.ctx.createGain()
-        osc.type = 'sine'
-        osc.frequency.setValueAtTime(note.f, t + note.time)
-        gain.gain.setValueAtTime(0.2, t + note.time)
-        gain.gain.exponentialRampToValueAtTime(0.001, t + note.time + note.dur)
-        osc.connect(gain)
-        gain.connect(this.ctx.destination)
-        osc.start(t + note.time)
-        osc.stop(t + note.time + note.dur)
-      })
-    } catch {}
-  }
-
-  playWrongBuzzer() {
-    if (!this.enabled) return
-    this.init()
-    if (!this.ctx) return
-    try {
-      const t = this.ctx.currentTime
-      const osc = this.ctx.createOscillator()
-      const gain = this.ctx.createGain()
-      osc.type = 'sawtooth'
-      osc.frequency.setValueAtTime(160, t)
-      gain.gain.setValueAtTime(0.2, t)
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3)
-      osc.connect(gain)
-      gain.connect(this.ctx.destination)
-      osc.start(t)
-      osc.stop(t + 0.3)
-    } catch {}
-  }
-
-  playCrashSound() {
-    if (!this.enabled) return
-    this.init()
-    if (!this.ctx) return
-    try {
-      const t = this.ctx.currentTime
-      const osc = this.ctx.createOscillator()
-      const gain = this.ctx.createGain()
-      osc.type = 'sawtooth'
-      osc.frequency.setValueAtTime(140, t)
-      osc.frequency.exponentialRampToValueAtTime(30, t + 0.8)
-      gain.gain.setValueAtTime(0.45, t)
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.8)
-      osc.connect(gain)
-      gain.connect(this.ctx.destination)
-      osc.start(t)
-      osc.stop(t + 0.8)
-
-      const noiseOsc = this.ctx.createOscillator()
-      const noiseGain = this.ctx.createGain()
-      noiseOsc.type = 'square'
-      noiseOsc.frequency.setValueAtTime(650, t)
-      noiseOsc.frequency.linearRampToValueAtTime(150, t + 0.6)
-      noiseGain.gain.setValueAtTime(0.3, t)
-      noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.6)
-      noiseOsc.connect(noiseGain)
-      noiseGain.connect(this.ctx.destination)
-      noiseOsc.start(t)
-      noiseOsc.stop(t + 0.6)
-    } catch {}
+function rand(seed: number) {
+  return () => {
+    seed = (seed * 16807) % 2147483647
+    return (seed - 1) / 2147483646
   }
 }
 
-const soundEngine = new SafetySoundEngine()
+/** Racking: four blocks around the intersection, plus pallets and loads. */
+function buildRacking() {
+  const frame: BoxItem[] = []
+  const goods: BoxItem[] = []
+  const r = rand(42)
+  const BAY = 2.75
+  const LEVELS = [0.12, 1.65, 3.15, 4.65]
+  const HEIGHT = 5.7
+  const loadColors = ['#c49a6c', '#b98a55', '#d2b48c', '#e8e4da', '#a97c50', '#dcdcd2', '#3b6aa0', '#c4a070']
 
-// ─── First-Person Controller Rig with PC WASD & Mouse Look ───────────────────
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const z0 = sz * RACK_INNER
+      const z1 = sz * (RACK_INNER + RACK_DEPTH)
+      const zc = (z0 + z1) / 2
+      for (let b = 0; b < 4; b++) {
+        const xa = sx * (RACK_END + b * BAY)
+        const xb = sx * (RACK_END + (b + 1) * BAY)
+        // Uprights
+        for (const x of [xa, xb]) {
+          for (const z of [z0, z1]) frame.push({ p: [x, HEIGHT / 2, z], s: [0.09, HEIGHT, 0.09], c: '#1d4ed8' })
+          // Diagonal bracing proxy
+          frame.push({ p: [x, HEIGHT / 2, zc], s: [0.04, HEIGHT, 0.04], c: '#1e40af' })
+        }
+        const xc = (xa + xb) / 2
+        for (const [li, y] of LEVELS.entries()) {
+          if (li > 0) {
+            for (const z of [z0, z1]) frame.push({ p: [xc, y - 0.06, z], s: [BAY, 0.12, 0.06], c: '#ea580c' })
+          }
+          // Two pallets per bay, occasionally an empty slot
+          for (const off of [-0.65, 0.65]) {
+            if (r() < 0.1) continue
+            const px = xc + off
+            goods.push({ p: [px, y + 0.08, zc], s: [1.15, 0.14, 1.05], c: '#a07a4c' })
+            const h = 0.7 + r() * 0.65
+            const col = loadColors[Math.floor(r() * loadColors.length)]
+            goods.push({ p: [px, y + 0.15 + h / 2, zc], s: [1.05, h, 0.98], c: col })
+            if (r() < 0.35 && h < 1.0) {
+              const h2 = 0.25 + r() * 0.2
+              goods.push({ p: [px + (r() - 0.5) * 0.2, y + 0.15 + h + h2 / 2, zc], s: [0.7, h2, 0.6], c: loadColors[Math.floor(r() * 4)] })
+            }
+          }
+        }
+      }
+      // End-of-aisle column protector at the corner
+      frame.push({ p: [sx * RACK_END, 0.45, sz * RACK_INNER], s: [0.3, 0.9, 0.3], c: '#facc15' })
+    }
+  }
+  return { frame, goods }
+}
 
-function FirstPersonController({
-  playerPos,
-  setPlayerPos,
-  yaw,
-  setYaw,
-  pitch,
-  setPitch,
-  viewMode,
-  isSlowMo,
-  isCrashing,
-  timeScale,
-}: {
-  playerPos: [number, number, number]
-  setPlayerPos: (fn: (prev: [number, number, number]) => [number, number, number]) => void
-  yaw: number
-  setYaw: (fn: (prev: number) => number) => void
-  pitch: number
-  setPitch: (fn: (prev: number) => number) => void
-  viewMode: 'fpv' | 'orbit'
-  isSlowMo: boolean
-  isCrashing: boolean
-  timeScale: number
-}) {
-  const { camera, gl } = useThree()
-  const keysRef = useRef<Record<string, boolean>>({})
-  const isDraggingRef = useRef(false)
-  const lastMouseRef = useRef({ x: 0, y: 0 })
-  const handsRef = useRef<THREE.Group>(null)
-  const shakeOffsetRef = useRef({ x: 0, y: 0 })
+/** Walkway barriers (posts + rails) with a gap at the crossing. */
+function buildBarriers() {
+  const posts: BoxItem[] = []
+  const rails: Segment[] = []
+  for (const z of [-1.25, 1.25]) {
+    for (const [a, b] of [[-15, -2.3], [2.3, 15]] as const) {
+      for (let x = a; x <= b + 0.01; x += 1.6) posts.push({ p: [x, 0.55, z], s: [0.1, 1.1, 0.1], c: '#facc15' })
+      rails.push([a, 1.05, z, b, 1.05, z], [a, 0.55, z, b, 0.55, z])
+    }
+  }
+  return { posts, rails }
+}
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      keysRef.current[e.code] = true
-    }
-    const handleKeyUp = (e: KeyboardEvent) => {
-      keysRef.current[e.code] = false
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('keyup', handleKeyUp)
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('keyup', handleKeyUp)
-    }
+function buildRoof() {
+  const trusses: Segment[] = []
+  for (let x = -20; x <= 20; x += 6) {
+    trusses.push([x, 9, -22, x, 9, 22], [x, 8.2, -22, x, 8.2, 22])
+    for (let z = -22; z < 22; z += 2) trusses.push([x, 8.2, z, x, 9, z + 1], [x, 9, z + 1, x, 8.2, z + 2])
+  }
+  const lights: BoxItem[] = []
+  for (let x = -18; x <= 18; x += 6) for (let z = -15; z <= 15; z += 5) lights.push({ p: [x + 3, 7.95, z], s: [0.6, 0.08, 1.4], c: '#ffffff' })
+  return { trusses, lights }
+}
+
+const RACKING = buildRacking()
+const BARRIERS = buildBarriers()
+const ROOF = buildRoof()
+
+// ─── Scene pieces ────────────────────────────────────────────────────────────
+
+function Warehouse() {
+  const floor = useMemo(() => concreteTexture([10, 10], '#80868d'), [])
+  const wall = useMemo(() => claddingTexture([14, 2], '#d4d8dd'), [])
+  const stop = useMemo(() => stencilTexture('stop', 'STOP · LOOK · LISTEN', '#ffffff'), [])
+  const xing = useMemo(() => stencilTexture('xing', 'FORKLIFT CROSSING', '#facc15'), [])
+  const ped = useMemo(() => stencilTexture('ped', 'PEDESTRIAN WALKWAY', '#e2f5e9'), [])
+  const sign = useMemo(
+    () => signTexture('fk-warning', ['FORKLIFT', 'TRAFFIC'], { bg: '#facc15', fg: '#111111', border: '#111111', glyph: '⚠', w: 256, h: 256 }),
+    []
+  )
+  const pedSign = useMemo(
+    () => signTexture('ped-sign', ['PEDESTRIANS', 'STOP AT LINE'], { bg: '#ffffff', fg: '#b91c1c', border: '#b91c1c', w: 384, h: 192 }),
+    []
+  )
+
+  const zebra = useMemo(() => {
+    const items: number[] = []
+    for (let x = -1.6; x <= 1.61; x += 0.55) items.push(x)
+    return items
+  }, [])
+
+  return (
+    <group>
+      {/* Floor */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[50, 50]} />
+        <meshStandardMaterial map={floor} roughness={0.62} metalness={0.05} />
+      </mesh>
+
+      {/* Pedestrian walkway */}
+      <Paint position={[-8.6, 0.004, 0]} size={[12.6, 2.5]} color="#2f6b4a" />
+      <Paint position={[8.6, 0.004, 0]} size={[12.6, 2.5]} color="#2f6b4a" />
+      {[-1.25, 1.25].map((z) => (
+        <Paint key={z} position={[0, 0.006, z]} size={[30, 0.1]} color="#facc15" />
+      ))}
+      <FloorDecal map={ped} position={[-9, 0.008, 0]} size={[2.2, 0.275]} rotation={-Math.PI / 2} />
+
+      {/* Forklift aisle edge lines */}
+      {[-1.95, 1.95].map((x) => (
+        <Paint key={x} position={[x, 0.006, 0]} size={[0.1, 44]} color="#facc15" />
+      ))}
+      <FloorDecal map={xing} position={[0, 0.008, 5.2]} size={[3.4, 0.42]} rotation={0} />
+      <FloorDecal map={xing} position={[0, 0.008, -5.2]} size={[3.4, 0.42]} rotation={Math.PI} />
+
+      {/* Zebra crossing */}
+      {zebra.map((x) => (
+        <Paint key={x} position={[x, 0.007, 0]} size={[0.3, 2.3]} color="#f1f5f9" />
+      ))}
+
+      {/* Stop line + stencil */}
+      <Paint position={[STOP_LINE_X, 0.008, 0]} size={[0.32, 2.4]} color="#dc2626" />
+      <FloorDecal map={stop} position={[STOP_LINE_X - 0.75, 0.009, 0]} size={[2.2, 0.28]} rotation={-Math.PI / 2} />
+
+      {/* Walls */}
+      <mesh position={[0, 4.5, -22]} receiveShadow>
+        <boxGeometry args={[50, 9, 0.3]} />
+        <meshStandardMaterial map={wall} roughness={0.7} metalness={0.2} />
+      </mesh>
+      <mesh position={[0, 4.5, 22]} receiveShadow>
+        <boxGeometry args={[50, 9, 0.3]} />
+        <meshStandardMaterial map={wall} roughness={0.7} metalness={0.2} />
+      </mesh>
+      <mesh position={[-20, 4.5, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <boxGeometry args={[44, 9, 0.3]} />
+        <meshStandardMaterial map={wall} roughness={0.7} metalness={0.2} />
+      </mesh>
+      <mesh position={[20, 4.5, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <boxGeometry args={[44, 9, 0.3]} />
+        <meshStandardMaterial map={wall} roughness={0.7} metalness={0.2} />
+      </mesh>
+      {/* Ceiling */}
+      <mesh position={[0, 9.2, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[50, 50]} />
+        <meshStandardMaterial color="#3a4048" roughness={0.9} />
+      </mesh>
+
+      <Tubes segments={ROOF.trusses} radius={0.05} color="#59616b" metalness={0.5} roughness={0.5} />
+      <LightPanels items={ROOF.lights} />
+
+      <Boxes items={RACKING.frame} roughness={0.5} />
+      <Boxes items={RACKING.goods} roughness={0.85} />
+      <Boxes items={BARRIERS.posts} roughness={0.5} />
+      <Tubes segments={BARRIERS.rails} radius={0.035} color="#facc15" roughness={0.45} />
+
+      {/* Signs on the rack ends */}
+      <mesh position={[-RACK_END - 0.02, 3.0, RACK_INNER + RACK_DEPTH / 2]} rotation={[0, -Math.PI / 2, 0]}>
+        <planeGeometry args={[0.9, 0.9]} />
+        <meshStandardMaterial map={sign} roughness={0.5} />
+      </mesh>
+      <group position={[STOP_LINE_X - 0.4, 0, -1.55]}>
+        <mesh position={[0, 0.9, 0]}>
+          <cylinderGeometry args={[0.03, 0.03, 1.8, 8]} />
+          <meshStandardMaterial color="#9ca3af" metalness={0.6} roughness={0.4} />
+        </mesh>
+        <mesh position={[-0.02, 1.95, 0]} rotation={[0, -Math.PI / 2, 0]}>
+          <planeGeometry args={[0.8, 0.4]} />
+          <meshStandardMaterial map={pedSign} roughness={0.5} />
+        </mesh>
+      </group>
+
+      {/* Parked pallet jack & stacked pallets for clutter near the start */}
+      <Boxes
+        items={[
+          { p: [-12, 0.36, -2.5], s: [1.2, 0.72, 1.0], c: '#a07a4c' },
+          { p: [-12, 0.85, -2.5], s: [1.1, 0.26, 0.95], c: '#c49a6c' },
+          { p: [11, 0.5, 2.6], s: [1.2, 1.0, 1.0], c: '#dcdcd2' },
+        ]}
+      />
+    </group>
+  )
+}
+
+/** Convex mirror that really reflects the aisle via a small render target. */
+function ConvexMirror() {
+  const fbo = useFBO(256, 256, { samples: 0 })
+  const cam = useMemo(() => {
+    const c = new THREE.PerspectiveCamera(100, 1, 0.1, 60)
+    c.position.copy(MIRROR_POS)
+    c.lookAt(FORKLIFT_LANE_X, 0.9, 9)
+    return c
+  }, [])
+  const mirrorRef = useRef<THREE.Group>(null)
+  const frame = useRef(0)
+  const lens = useMemo(() => {
+    // Dome cap around +Y, re-mapped with planar UVs so the reflection isn't swirled
+    const R = 0.78
+    const theta = 0.56
+    const geo = new THREE.SphereGeometry(R, 32, 10, 0, Math.PI * 2, 0, theta)
+    const rim = R * Math.sin(theta)
+    const pos = geo.attributes.position
+    const uv = geo.attributes.uv
+    for (let i = 0; i < pos.count; i++) uv.setXY(i, 0.5 + pos.getX(i) / (2 * rim), 0.5 - pos.getZ(i) / (2 * rim))
+    geo.rotateX(Math.PI / 2)
+    geo.translate(0, 0, -R * Math.cos(theta))
+    return { geo, rim }
+  }, [])
+
+  const normalLook = useMemo(() => {
+    // Face halfway between the walkway and the aisle so it reads as "angled"
+    const toPlayer = new THREE.Vector3(WAIT_X, 1.65, 0).sub(MIRROR_POS).normalize()
+    const toAisle = new THREE.Vector3(FORKLIFT_LANE_X, 1.2, 9).sub(MIRROR_POS).normalize()
+    return MIRROR_POS.clone().add(toPlayer.add(toAisle).normalize())
   }, [])
 
   useEffect(() => {
-    const canvas = gl.domElement
-    const onMouseDown = (e: MouseEvent) => {
-      if (viewMode !== 'fpv') return
-      isDraggingRef.current = true
-      lastMouseRef.current = { x: e.clientX, y: e.clientY }
+    mirrorRef.current?.lookAt(normalLook)
+  }, [normalLook])
+
+  useFrame(({ gl, scene }) => {
+    // Update the reflection every other frame — enough for a 256px mirror
+    if (frame.current++ % 2) return
+    const m = mirrorRef.current
+    if (!m) return
+    m.visible = false
+    const autoShadow = gl.shadowMap.autoUpdate
+    gl.shadowMap.autoUpdate = false
+    gl.setRenderTarget(fbo)
+    gl.render(scene, cam)
+    gl.setRenderTarget(null)
+    gl.shadowMap.autoUpdate = autoShadow
+    m.visible = true
+  })
+
+  return (
+    <group>
+      {/* Post */}
+      <mesh position={[MIRROR_POS.x + 0.15, MIRROR_POS.y / 2, MIRROR_POS.z - 0.15]} castShadow>
+        <cylinderGeometry args={[0.04, 0.05, MIRROR_POS.y, 8]} />
+        <meshStandardMaterial color="#6b7280" metalness={0.6} roughness={0.4} />
+      </mesh>
+      <group ref={mirrorRef} position={MIRROR_POS}>
+        {/* Bulged lens showing the reflection; scale.x = -1 mirrors the image */}
+        <mesh geometry={lens.geo} scale={[-1, 1, 1]}>
+          <meshBasicMaterial map={fbo.texture} side={THREE.DoubleSide} toneMapped={false} />
+        </mesh>
+        <mesh>
+          <torusGeometry args={[lens.rim, 0.04, 10, 40]} />
+          <meshStandardMaterial color="#ea580c" roughness={0.5} />
+        </mesh>
+        <mesh position={[0, 0, -0.03]} rotation={[0, Math.PI, 0]}>
+          <circleGeometry args={[lens.rim + 0.02, 40]} />
+          <meshStandardMaterial color="#1f2937" />
+        </mesh>
+      </group>
+    </group>
+  )
+}
+
+// ─── Forklift ────────────────────────────────────────────────────────────────
+
+interface ForkliftSim {
+  z: number
+  speed: number
+  targetSpeed: number
+  decel: number
+  /** Do not drive past this z while holding */
+  holdZ: number | null
+  wheel: number
+}
+
+function ForkliftModel({ simRef, playerRef, groupRef }: { simRef: React.RefObject<ForkliftSim>; playerRef: React.RefObject<PlayerState>; groupRef: React.RefObject<THREE.Group | null> }) {
+  const wheels = useRef<THREE.Mesh[]>([])
+  const spot = useRef<THREE.Mesh>(null)
+
+  useFrame((_, rawDt) => {
+    const f = simRef.current
+    const dt = Math.min(rawDt, 0.05) * playerRef.current.timeScale
+    const rate = f.targetSpeed < f.speed ? f.decel : 1.6
+    f.speed += Math.sign(f.targetSpeed - f.speed) * Math.min(Math.abs(f.targetSpeed - f.speed), rate * dt)
+    f.z -= f.speed * dt
+    // Hold point, or park before the far wall
+    const stopZ = f.holdZ ?? -19
+    if (f.z < stopZ) {
+      f.z = stopZ
+      f.speed = 0
     }
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current || viewMode !== 'fpv') return
-      const dx = e.clientX - lastMouseRef.current.x
-      const dy = e.clientY - lastMouseRef.current.y
-      lastMouseRef.current = { x: e.clientX, y: e.clientY }
-
-      const sensitivity = 0.0035
-      setYaw((prev) => prev - dx * sensitivity)
-      setPitch((prev) => Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, prev - dy * sensitivity)))
-    }
-    const onMouseUp = () => {
-      isDraggingRef.current = false
-    }
-
-    canvas.addEventListener('mousedown', onMouseDown)
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
-    return () => {
-      canvas.removeEventListener('mousedown', onMouseDown)
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
-    }
-  }, [gl, viewMode, setYaw, setPitch])
-
-  useFrame((state, delta) => {
-    if (viewMode !== 'fpv') return
-
-    if (isCrashing) {
-      shakeOffsetRef.current = {
-        x: (Math.random() - 0.5) * 0.18,
-        y: (Math.random() - 0.5) * 0.18,
-      }
-    } else {
-      shakeOffsetRef.current = { x: 0, y: 0 }
-    }
-
-    let fwd = 0
-    let strafe = 0
-    const keys = keysRef.current
-    if (keys['KeyW'] || keys['ArrowUp']) fwd += 1
-    if (keys['KeyS'] || keys['ArrowDown']) fwd -= 1
-    if (keys['KeyD'] || keys['ArrowRight']) strafe += 1
-    if (keys['KeyA'] || keys['ArrowLeft']) strafe -= 1
-
-    const isMoving = fwd !== 0 || strafe !== 0
-    if (isMoving && !isCrashing) {
-      const speed = (isSlowMo ? 0.6 : 3.5) * timeScale * delta
-      const fwdX = -Math.sin(yaw)
-      const fwdZ = -Math.cos(yaw)
-      const rightX = Math.cos(yaw)
-      const rightZ = -Math.sin(yaw)
-
-      const dx = (fwdX * fwd + rightX * strafe) * speed
-      const dz = (fwdZ * fwd + rightZ * strafe) * speed
-
-      setPlayerPos(([px, py, pz]) => [
-        Math.max(-14, Math.min(6, px + dx)),
-        py,
-        Math.max(-8, Math.min(8, pz + dz)),
-      ])
-    }
-
-    const eyeHeight = isCrashing ? 0.4 : 1.65
-    camera.position.set(
-      playerPos[0] + shakeOffsetRef.current.x,
-      eyeHeight + shakeOffsetRef.current.y,
-      playerPos[2]
-    )
-
-    const euler = new THREE.Euler(pitch + (isCrashing ? 0.75 : 0), yaw, 0, 'YXZ')
-    camera.quaternion.setFromEuler(euler)
-
-    if (handsRef.current) {
-      const t = state.clock.getElapsedTime()
-      const bob = isMoving ? Math.sin(t * 10) * 0.015 : Math.sin(t * 2) * 0.004
-      handsRef.current.position.set(0.04, -0.36 + bob, -0.52)
+    f.wheel += (f.speed * dt) / 0.32
+    if (groupRef.current) groupRef.current.position.z = f.z
+    wheels.current.forEach((w) => w && (w.rotation.y = f.wheel))
+    if (spot.current) {
+      const m = spot.current.material as THREE.MeshBasicMaterial
+      m.opacity = 0.55 + Math.sin(performance.now() * 0.012) * 0.15
     }
   })
 
-  if (viewMode !== 'fpv') return null
-
+  const yellow = '#f5b301'
   return (
-    <group ref={handsRef}>
-      <group position={[0.04, -0.05, 0]} rotation={[0.4, 0.05, -0.05]}>
-        <mesh castShadow>
-          <boxGeometry args={[0.26, 0.18, 0.02]} />
-          <meshStandardMaterial color="#0f172a" roughness={0.8} />
+    <group ref={groupRef} position={[FORKLIFT_LANE_X, 0, 18]}>
+      {/* Chassis */}
+      <mesh position={[0, 0.62, 0.15]} castShadow receiveShadow>
+        <boxGeometry args={[1.12, 0.62, 1.9]} />
+        <meshStandardMaterial color={yellow} roughness={0.4} metalness={0.2} />
+      </mesh>
+      {/* Counterweight */}
+      <mesh position={[0, 0.72, 1.12]} castShadow>
+        <boxGeometry args={[1.14, 0.95, 0.5]} />
+        <meshStandardMaterial color="#2b2f36" roughness={0.6} metalness={0.4} />
+      </mesh>
+      <mesh position={[0, 0.72, 1.37]} rotation={[0, 0, Math.PI / 2]} castShadow>
+        <cylinderGeometry args={[0.47, 0.47, 1.14, 18, 1, false, 0, Math.PI]} />
+        <meshStandardMaterial color="#2b2f36" roughness={0.6} metalness={0.4} />
+      </mesh>
+      {/* Seat + steering */}
+      <mesh position={[0, 1.1, 0.55]} castShadow>
+        <boxGeometry args={[0.5, 0.12, 0.45]} />
+        <meshStandardMaterial color="#111827" roughness={0.8} />
+      </mesh>
+      <mesh position={[0, 1.38, 0.78]} castShadow>
+        <boxGeometry args={[0.5, 0.5, 0.1]} />
+        <meshStandardMaterial color="#111827" roughness={0.8} />
+      </mesh>
+      <mesh position={[0, 1.35, -0.1]} rotation={[-0.9, 0, 0]}>
+        <torusGeometry args={[0.16, 0.022, 8, 20]} />
+        <meshStandardMaterial color="#111827" />
+      </mesh>
+      {/* Operator */}
+      <group position={[0, 1.15, 0.45]}>
+        <mesh position={[0, 0.32, 0]} castShadow>
+          <boxGeometry args={[0.38, 0.5, 0.24]} />
+          <meshStandardMaterial color="#f97316" roughness={0.6} />
         </mesh>
-        {[
-          [-0.13, 0.09],
-          [0.13, 0.09],
-          [-0.13, -0.09],
-          [0.13, -0.09],
-        ].map(([cx, cy], i) => (
-          <mesh key={i} position={[cx, cy, 0]}>
-            <sphereGeometry args={[0.018, 8, 8]} />
-            <meshStandardMaterial color="#f59e0b" roughness={0.4} />
+        <mesh position={[0, 0.34, -0.125]}>
+          <planeGeometry args={[0.36, 0.05]} />
+          <meshStandardMaterial color="#e5e7eb" emissive="#9ca3af" emissiveIntensity={0.3} side={THREE.DoubleSide} />
+        </mesh>
+        <mesh position={[0, 0.7, 0]} castShadow>
+          <sphereGeometry args={[0.11, 14, 12]} />
+          <meshStandardMaterial color="#c68c5a" roughness={0.7} />
+        </mesh>
+        <mesh position={[0, 0.79, 0]}>
+          <sphereGeometry args={[0.135, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2]} />
+          <meshStandardMaterial color="#ffffff" roughness={0.35} />
+        </mesh>
+        {[-0.22, 0.22].map((x) => (
+          <mesh key={x} position={[x, 0.3, -0.25]} rotation={[-1.1, 0, 0]} castShadow>
+            <cylinderGeometry args={[0.045, 0.045, 0.42, 8]} />
+            <meshStandardMaterial color="#f97316" roughness={0.6} />
           </mesh>
         ))}
-        <mesh position={[0, 0, 0.011]}>
-          <planeGeometry args={[0.23, 0.15]} />
-          <meshStandardMaterial color="#0284c7" emissive="#0369a1" emissiveIntensity={0.6} roughness={0.1} />
-        </mesh>
       </group>
-
-      <group position={[-0.16, -0.06, 0.05]} rotation={[0.5, 0.3, -0.2]}>
-        <mesh castShadow>
-          <boxGeometry args={[0.08, 0.12, 0.09]} />
-          <meshStandardMaterial color="#ea580c" roughness={0.7} />
-        </mesh>
-        <mesh position={[-0.04, -0.16, -0.05]} rotation={[-0.4, 0, 0]}>
-          <cylinderGeometry args={[0.045, 0.048, 0.28, 10]} />
-          <meshStandardMaterial color="#84cc16" roughness={0.5} />
-        </mesh>
-      </group>
-      <group position={[0.2, -0.06, 0.05]} rotation={[0.5, -0.3, 0.2]}>
-        <mesh castShadow>
-          <boxGeometry args={[0.08, 0.12, 0.09]} />
-          <meshStandardMaterial color="#ea580c" roughness={0.7} />
-        </mesh>
-        <mesh position={[0.04, -0.16, -0.05]} rotation={[-0.4, 0, 0]}>
-          <cylinderGeometry args={[0.045, 0.048, 0.28, 10]} />
-          <meshStandardMaterial color="#84cc16" roughness={0.5} />
-        </mesh>
-      </group>
-    </group>
-  )
-}
-
-// ─── Forklift Entity Driving Down Z Cross-Aisle ───────────────────────────────
-
-function Forklift({
-  forkliftZ,
-  beaconIntensity,
-}: {
-  forkliftZ: number
-  beaconIntensity: number
-}) {
-  return (
-    <group position={[0, 0, forkliftZ]} rotation={[0, 0, 0]}>
-      {/* Driver seated inside */}
-      <group position={[0, 0.85, 0.1]} rotation={[0, 0, 0]}>
-        <mesh position={[0, 0.28, 0]} castShadow>
-          <boxGeometry args={[0.34, 0.38, 0.2]} />
-          <meshStandardMaterial color="#ea580c" roughness={0.5} />
-        </mesh>
-        <mesh position={[0, 0.54, 0]} castShadow>
-          <sphereGeometry args={[0.095, 12, 12]} />
-          <meshStandardMaterial color="#d4a373" roughness={0.7} />
-        </mesh>
-        <mesh position={[0, 0.62, 0]}>
-          <sphereGeometry args={[0.115, 14, 14, 0, Math.PI * 2, 0, Math.PI / 2]} />
-          <meshStandardMaterial color="#ffffff" roughness={0.3} />
-        </mesh>
-      </group>
-
-      {/* Main CAT-Yellow Chassis */}
-      <mesh position={[0, 0.65, 0]} castShadow receiveShadow>
-        <boxGeometry args={[1.4, 0.7, 2.2]} />
-        <meshStandardMaterial color="#f59e0b" roughness={0.35} metalness={0.3} />
-      </mesh>
-
-      {/* Rear Counterweight & Hazard Striping */}
-      <mesh position={[0, 0.75, 0.85]} castShadow>
-        <boxGeometry args={[1.38, 0.85, 0.7]} />
-        <meshStandardMaterial color="#1f2937" roughness={0.8} metalness={0.5} />
-      </mesh>
-      {[-0.4, -0.2, 0, 0.2, 0.4].map((x, i) => (
-        <mesh key={i} position={[x, 0.42, 1.21]}>
-          <planeGeometry args={[0.07, 0.2]} />
-          <meshStandardMaterial color={i % 2 === 0 ? '#f59e0b' : '#111827'} roughness={0.5} />
-        </mesh>
-      ))}
-
-      {/* ROPS Overhead Protective Steel Cage */}
+      {/* Overhead guard */}
       {[
-        [-0.58, 1.45, -0.7],
-        [0.58, 1.45, -0.7],
-        [-0.58, 1.45, 0.4],
-        [0.58, 1.45, 0.4],
-      ].map(([px, py, pz], i) => (
-        <mesh key={i} position={[px, py, pz]} castShadow>
-          <boxGeometry args={[0.08, 1.2, 0.08]} />
-          <meshStandardMaterial color="#111827" metalness={0.7} roughness={0.3} />
+        [-0.5, -0.55],
+        [0.5, -0.55],
+        [-0.5, 0.85],
+        [0.5, 0.85],
+      ].map(([x, z]) => (
+        <mesh key={`${x}${z}`} position={[x, 1.6, z]} castShadow>
+          <boxGeometry args={[0.07, 1.3, 0.07]} />
+          <meshStandardMaterial color="#1f2937" metalness={0.6} roughness={0.4} />
         </mesh>
       ))}
-      <mesh position={[0, 2.06, -0.15]} castShadow>
-        <boxGeometry args={[1.28, 0.05, 1.25]} />
-        <meshStandardMaterial color="#1f2937" metalness={0.6} roughness={0.4} />
+      <mesh position={[0, 2.26, 0.15]} castShadow>
+        <boxGeometry args={[1.08, 0.06, 1.5]} />
+        <meshStandardMaterial color="#1f2937" metalness={0.5} roughness={0.5} />
       </mesh>
-
-      {/* Dual Steel Mast & Carriage facing -Z */}
-      {[-0.45, 0.45].map((x, i) => (
-        <mesh key={i} position={[x, 1.9, -1.15]} castShadow>
-          <boxGeometry args={[0.1, 2.7, 0.12]} />
-          <meshStandardMaterial color="#1f2937" metalness={0.8} />
+      <group position={[0, 2.38, 0.8]}>
+        <Beacon />
+      </group>
+      {/* Mast */}
+      {[-0.38, 0.38].map((x) => (
+        <mesh key={x} position={[x, 1.25, -0.95]} castShadow>
+          <boxGeometry args={[0.09, 2.5, 0.14]} />
+          <meshStandardMaterial color="#27272a" metalness={0.7} roughness={0.35} />
         </mesh>
       ))}
-      <mesh position={[0, 1.8, -1.1]} castShadow>
-        <cylinderGeometry args={[0.05, 0.05, 2.4, 16]} />
-        <meshStandardMaterial color="#94a3b8" metalness={0.95} />
-      </mesh>
-
-      {/* Forged Steel Forks pointing towards -Z */}
-      {[-0.28, 0.28].map((x, i) => (
-        <group key={i} position={[x, 0.15, -1.29]}>
-          <mesh position={[0, 0.25, 0]} castShadow>
-            <boxGeometry args={[0.12, 0.55, 0.06]} />
-            <meshStandardMaterial color="#64748b" metalness={0.85} />
-          </mesh>
-          <mesh position={[0, 0.02, -0.65]} castShadow receiveShadow>
-            <boxGeometry args={[0.12, 0.05, 1.25]} />
-            <meshStandardMaterial color="#94a3b8" metalness={0.9} />
-          </mesh>
-        </group>
+      {[-0.26, 0.26].map((x) => (
+        <mesh key={x} position={[x, 1.3, -1.02]}>
+          <boxGeometry args={[0.07, 2.3, 0.08]} />
+          <meshStandardMaterial color="#3f3f46" metalness={0.7} roughness={0.35} />
+        </mesh>
       ))}
-
-      {/* Heavy-Duty Pneumatic Wheels */}
+      <mesh position={[0, 1.1, -0.92]}>
+        <cylinderGeometry args={[0.045, 0.045, 1.9, 10]} />
+        <meshStandardMaterial color="#cbd5e1" metalness={0.95} roughness={0.15} />
+      </mesh>
+      {/* Carriage + forks */}
+      <mesh position={[0, 0.5, -1.1]} castShadow>
+        <boxGeometry args={[0.92, 0.6, 0.06]} />
+        <meshStandardMaterial color="#27272a" metalness={0.6} roughness={0.4} />
+      </mesh>
+      {[-0.28, 0.28].map((x) => (
+        <mesh key={x} position={[x, 0.2, -1.7]} castShadow>
+          <boxGeometry args={[0.1, 0.045, 1.15]} />
+          <meshStandardMaterial color="#52525b" metalness={0.8} roughness={0.35} />
+        </mesh>
+      ))}
+      {/* Pallet load (shrink-wrapped) */}
+      <mesh position={[0, 0.28, -1.7]} castShadow>
+        <boxGeometry args={[1.0, 0.14, 1.15]} />
+        <meshStandardMaterial color="#a07a4c" roughness={0.9} />
+      </mesh>
+      <mesh position={[0, 0.88, -1.7]} castShadow>
+        <boxGeometry args={[0.98, 1.05, 1.1]} />
+        <meshStandardMaterial color="#d9d4c7" roughness={0.35} metalness={0.05} />
+      </mesh>
+      {/* Wheels */}
       {[
-        [-0.68, 0.32, 0.7],
-        [0.68, 0.32, 0.7],
-        [-0.68, 0.38, -0.75],
-        [0.68, 0.38, -0.75],
-      ].map(([wx, wy, wz], i) => (
-        <mesh key={i} position={[wx, wy, wz]} rotation={[0, 0, Math.PI / 2]} castShadow>
-          <cylinderGeometry args={[wz < 0 ? 0.38 : 0.32, wz < 0 ? 0.38 : 0.32, 0.26, 18]} />
-          <meshStandardMaterial color="#0f172a" roughness={0.95} />
-        </mesh>
-      ))}
-
-      {/* Amber Strobe Beacon on Roof */}
-      <mesh position={[0, 2.18, 0.6]}>
-        <cylinderGeometry args={[0.09, 0.11, 0.16, 12]} />
-        <meshStandardMaterial color="#f59e0b" emissive="#f59e0b" emissiveIntensity={beaconIntensity} transparent opacity={0.9} />
-      </mesh>
-      <pointLight position={[0, 2.3, 0.6]} color="#f59e0b" distance={10} intensity={beaconIntensity} />
-
-      {/* Front Spotlights pointing forward (-Z) */}
-      {[-0.45, 0.45].map((x, i) => (
-        <group key={i} position={[x, 1.45, -1.15]}>
-          <mesh position={[0, 0, -0.04]} rotation={[Math.PI / 2, 0, 0]}>
-            <circleGeometry args={[0.065, 14]} />
-            <meshStandardMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={5} />
-          </mesh>
-          <spotLight
-            position={[0, 0, -0.1]}
-            target-position={[x, -1.4, -10]}
-            angle={0.5}
-            penumbra={0.4}
-            intensity={5}
-            color="#fff8e7"
+        [-0.58, 0.32, -0.62, 0.32],
+        [0.58, 0.32, -0.62, 0.32],
+        [-0.55, 0.25, 0.95, 0.25],
+        [0.55, 0.25, 0.95, 0.25],
+      ].map(([x, y, z, rad], i) => (
+        <group key={i} position={[x, y, z]} rotation={[0, 0, Math.PI / 2]}>
+          <mesh
+            ref={(m) => {
+              if (m) wheels.current[i] = m
+            }}
             castShadow
-          />
+          >
+            <cylinderGeometry args={[rad, rad, 0.24, 16]} />
+            <meshStandardMaterial color="#111111" roughness={0.9} />
+          </mesh>
+          <mesh position={[0, x < 0 ? -0.125 : 0.125, 0]}>
+            <cylinderGeometry args={[rad * 0.55, rad * 0.55, 0.01, 12]} />
+            <meshStandardMaterial color="#d4d4d8" metalness={0.6} roughness={0.4} />
+          </mesh>
         </group>
       ))}
-
-      {/* Blue Safety Floor Projection Light (4m ahead along -Z) */}
-      <mesh position={[0, 0.03, -4.5]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[0.7, 24]} />
-        <meshStandardMaterial color="#38bdf8" emissive="#0284c7" emissiveIntensity={4} transparent opacity={0.7} />
-      </mesh>
-    </group>
-  )
-}
-
-// ─── Epoxy Floor & High-Contrast Markings ─────────────────────────────────────
-
-function WarehouseFloor({ showClearanceHalo }: { showClearanceHalo: boolean }) {
-  return (
-    <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-        <planeGeometry args={[48, 48]} />
-        <meshStandardMaterial color="#22262c" roughness={0.4} metalness={0.15} />
-      </mesh>
-
-      {/* Pedestrian Walkway along X at z = 0 (Green OSHA Walkway) */}
-      <mesh position={[0, 0.015, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[30, 2.4]} />
-        <meshStandardMaterial color="#1e3a2b" roughness={0.6} />
-      </mesh>
-      {[-1.2, 1.2].map((z, i) => (
-        <mesh key={i} position={[0, 0.02, z]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[30, 0.16]} />
-          <meshStandardMaterial color="#f59e0b" roughness={0.4} />
+      {/* Headlights */}
+      {[-0.42, 0.42].map((x) => (
+        <mesh key={x} position={[x, 1.9, -0.62]}>
+          <circleGeometry args={[0.06, 14]} />
+          <meshBasicMaterial color="#fffbe8" toneMapped={false} side={THREE.DoubleSide} />
         </mesh>
       ))}
-
-      {/* Vehicle Cross-Aisle Lane along Z at x = 0 */}
-      <mesh position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[3.2, 30]} />
-        <meshStandardMaterial color="#1a1e24" roughness={0.5} />
+      {/* Blue pedestrian-warning spot projected 5 m ahead */}
+      <mesh ref={spot} position={[0, 0.02, -5.2]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.45, 28]} />
+        <meshBasicMaterial color="#3b82f6" transparent opacity={0.6} depthWrite={false} toneMapped={false} blending={THREE.AdditiveBlending} />
       </mesh>
-
-      {/* Intersection Crosswalk Zebra Stripes */}
-      {[-1.5, -0.9, -0.3, 0.3, 0.9, 1.5].map((x, i) => (
-        <mesh key={i} position={[x, 0.022, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[0.4, 2.0]} />
-          <meshStandardMaterial color="#f8fafc" roughness={0.3} />
-        </mesh>
-      ))}
-
-      {/* Critical Red Stop Line for Pedestrians at x = -3.5 */}
-      <mesh position={[-3.5, 0.025, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[0.35, 2.6]} />
-        <meshStandardMaterial color="#ef4444" roughness={0.4} />
-      </mesh>
-
-      {/* Safe Clearance Halo when user yields correctly */}
-      {showClearanceHalo && (
-        <mesh position={[-3.5, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[1.2, 2.2, 32]} />
-          <meshStandardMaterial color="#10b981" emissive="#10b981" emissiveIntensity={3} transparent opacity={0.65} />
-        </mesh>
-      )}
-
-      {/* Stenciled Warning Text */}
-      <Html position={[-3.6, 0.04, -0.9]} rotation={[-Math.PI / 2, 0, 0]} transform>
-        <div
-          style={{
-            fontSize: 9,
-            fontWeight: 900,
-            color: '#f59e0b',
-            letterSpacing: '0.12em',
-            textTransform: 'uppercase',
-            whiteSpace: 'nowrap',
-            opacity: 0.85,
-            pointerEvents: 'none',
-          }}
-        >
-          STOP • LOOK BOTH WAYS • PEDESTRIAN YIELD
-        </div>
-      </Html>
-    </group>
-  )
-}
-
-// ─── Heavy Industrial Pallet Racks ───────────────────────────────────────────
-
-function PalletRack({ position, rotation = 0 }: { position: [number, number, number]; rotation?: number }) {
-  return (
-    <group position={position} rotation={[0, rotation, 0]}>
-      {[
-        [-1.8, 1.9, 0.55],
-        [-1.8, 1.9, -0.55],
-        [1.8, 1.9, 0.55],
-        [1.8, 1.9, -0.55],
-      ].map(([px, py, pz], i) => (
-        <mesh key={i} position={[px, py, pz]} castShadow>
-          <boxGeometry args={[0.1, 3.8, 0.1]} />
-          <meshStandardMaterial color="#1d4ed8" metalness={0.7} roughness={0.3} />
-        </mesh>
-      ))}
-
-      {[0.4, 1.6, 2.8].map((y, li) => (
-        <group key={li} position={[0, y, 0]}>
-          {[-0.55, 0.55].map((z, bi) => (
-            <mesh key={bi} position={[0, 0, z]} castShadow receiveShadow>
-              <boxGeometry args={[3.7, 0.12, 0.08]} />
-              <meshStandardMaterial color="#ea580c" metalness={0.6} roughness={0.35} />
-            </mesh>
-          ))}
-          {[-1.0, 1.0].map((px, pi) => (
-            <group key={pi} position={[px, 0.15, 0]}>
-              <mesh castShadow>
-                <boxGeometry args={[1.2, 0.7, 0.9]} />
-                <meshStandardMaterial color="#92400e" roughness={0.85} />
-              </mesh>
-              <mesh position={[0, 0, 0.46]}>
-                <planeGeometry args={[0.3, 0.2]} />
-                <meshStandardMaterial color="#ffffff" roughness={0.2} />
-              </mesh>
-            </group>
-          ))}
-        </group>
-      ))}
-    </group>
-  )
-}
-
-// ─── Subtle Blind Spot Pointing Target (Right Corner Only) ─────────────────
-
-function BlindSpotTarget({
-  position,
-  id,
-  label,
-  onSelect,
-}: {
-  position: [number, number, number]
-  id: string
-  label: string
-  onSelect: (id: string) => void
-}) {
-  const [hovered, setHovered] = useState(false)
-  const detectedHazards = useSimulationStore((s) => s.detectedHazards)
-  const isSelected = detectedHazards.includes(id)
-
-  const handleClick = (e: { stopPropagation: () => void }) => {
-    e.stopPropagation()
-    onSelect(id)
-  }
-
-  return (
-    <group position={position}>
-      {/* Visible interactive hazard marker */}
-      <mesh
-        onClick={handleClick}
-        onPointerOver={() => {
-          setHovered(true)
-          document.body.style.cursor = 'crosshair'
-        }}
-        onPointerOut={() => {
-          setHovered(false)
-          document.body.style.cursor = 'default'
-        }}
-      >
-        <sphereGeometry args={[0.7, 24, 24]} />
-        <meshStandardMaterial
-          color={isSelected ? '#10b981' : hovered ? '#f59e0b' : '#38bdf8'}
-          emissive={isSelected ? '#10b981' : hovered ? '#f59e0b' : '#0284c7'}
-          emissiveIntensity={isSelected ? 1.8 : hovered ? 2.0 : 0.8}
-          transparent
-          opacity={isSelected ? 0.75 : hovered ? 0.55 : 0.3}
-          wireframe
-        />
-      </mesh>
-
-      {/* Outer subtle concentric indicator ring for visibility */}
-      {!isSelected && (
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[0.72, 0.78, 32]} />
-          <meshStandardMaterial
-            color="#38bdf8"
-            emissive="#0284c7"
-            emissiveIntensity={1.2}
-            transparent
-            opacity={0.4}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
-      )}
-
-      {hovered && (
-        <Html center position={[0, 0.9, 0]}>
-          <div
-            onClick={handleClick}
-            style={{
-              background: 'rgba(13, 15, 17, 0.95)',
-              color: '#ffffff',
-              padding: '6px 12px',
-              borderRadius: 6,
-              fontSize: 11,
-              fontWeight: 700,
-              whiteSpace: 'nowrap',
-              cursor: 'crosshair',
-              fontFamily: 'Inter, sans-serif',
-              boxShadow: '0 4px 15px rgba(0,0,0,0.6)',
-              border: '1px solid rgba(245,158,11,0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            <Crosshair size={13} color="#f59e0b" />
-            <span>Identify: {label}</span>
-          </div>
-        </Html>
-      )}
-    </group>
-  )
-}
-
-// ─── Overhead Convex Blind-Corner Mirror ─────────────────────────────────────
-
-function ConvexSafetyMirror({ position }: { position: [number, number, number] }) {
-  return (
-    <group position={position}>
-      <mesh position={[0, -0.5, 0]}>
-        <cylinderGeometry args={[0.03, 0.03, 1.0, 8]} />
-        <meshStandardMaterial color="#475569" metalness={0.8} />
-      </mesh>
-      <mesh position={[0.3, 0, 0.3]} rotation={[0.4, -Math.PI / 4, 0]}>
-        <torusGeometry args={[0.46, 0.04, 12, 28]} />
-        <meshStandardMaterial color="#ea580c" roughness={0.4} />
-      </mesh>
-      <mesh position={[0.3, 0, 0.3]} rotation={[0.4, -Math.PI / 4, 0]}>
-        <sphereGeometry args={[0.44, 20, 20, 0, Math.PI * 2, 0, Math.PI / 3]} />
-        <meshStandardMaterial color="#ffffff" metalness={0.98} roughness={0.05} />
+      <mesh position={[0, 0.019, -5.2]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.9, 28]} />
+        <meshBasicMaterial color="#1d4ed8" transparent opacity={0.18} depthWrite={false} toneMapped={false} blending={THREE.AdditiveBlending} />
       </mesh>
     </group>
   )
 }
 
-// ─── In-Scene 3D Simulation World ─────────────────────────────────────────────
+// ─── Background life: a picker walking the far walkway ──────────────────────
 
-function SimulationWorld({
-  viewMode,
-  isSlowMo,
-  timeScale,
-  playerPos,
-  setPlayerPos,
-  yaw,
-  setYaw,
-  pitch,
-  setPitch,
-  scenarioStage,
-  forkliftZ,
-  beaconIntensity,
-  showClearanceHalo,
-  onBlindSpotSelected,
-  onDecisionAnswer,
-  onContinueVideo,
-  decisionMade,
-  decisionCorrect,
-  isCrashing,
-}: {
-  viewMode: 'fpv' | 'orbit'
-  isSlowMo: boolean
-  timeScale: number
-  playerPos: [number, number, number]
-  setPlayerPos: (fn: (prev: [number, number, number]) => [number, number, number]) => void
-  yaw: number
-  setYaw: (fn: (prev: number) => number) => void
-  pitch: number
-  setPitch: (fn: (prev: number) => number) => void
-  scenarioStage: 'walking' | 'pointing' | 'deciding' | 'animating_correct' | 'animating_wrong' | 'resolved'
-  forkliftZ: number
-  beaconIntensity: number
-  showClearanceHalo: boolean
-  onBlindSpotSelected: (id: string) => void
-  onDecisionAnswer: (correct: boolean) => void
-  onContinueVideo: () => void
-  decisionMade: boolean
-  decisionCorrect: boolean | null
-  isCrashing: boolean
-}) {
-  return (
-    <>
-      <ambientLight intensity={0.45} />
-      <directionalLight position={[12, 18, 10]} intensity={1.8} castShadow shadow-mapSize={[2048, 2048]} />
-      <pointLight position={[-6, 7, 0]} intensity={1.2} color="#ffffff" distance={20} />
-      <pointLight position={[6, 7, 0]} intensity={1.2} color="#f0f4ff" distance={20} />
-
-      <FirstPersonController
-        playerPos={playerPos}
-        setPlayerPos={setPlayerPos}
-        yaw={yaw}
-        setYaw={setYaw}
-        pitch={pitch}
-        setPitch={setPitch}
-        viewMode={viewMode}
-        isSlowMo={isSlowMo}
-        isCrashing={isCrashing}
-        timeScale={timeScale}
-      />
-
-      <Forklift forkliftZ={forkliftZ} beaconIntensity={beaconIntensity} />
-
-      <WarehouseFloor showClearanceHalo={showClearanceHalo} />
-
-      {/* Pallet Racks forming the blind corner on +Z cross-aisle */}
-      <PalletRack position={[-2.0, 0, 2.5]} rotation={Math.PI / 2} />
-      <PalletRack position={[-2.0, 0, -2.5]} rotation={Math.PI / 2} />
-      <PalletRack position={[2.0, 0, 2.5]} rotation={Math.PI / 2} />
-      <PalletRack position={[2.0, 0, -2.5]} rotation={Math.PI / 2} />
-
-      {/* Overhead Convex Mirror */}
-      <ConvexSafetyMirror position={[-1.5, 3.2, 2.0]} />
-
-      {/* Single clean Blind Spot target at the corner rack */}
-      {scenarioStage === 'pointing' && (
-        <BlindSpotTarget
-          position={[-2.0, 1.5, 2.5]}
-          id="blind-corner-01"
-          label="Blind Corner Pallet Rack"
-          onSelect={onBlindSpotSelected}
-        />
-      )}
-
-      {/* Stage 2: Neutral In-World Decision Dilemma (No green/red giveaway colors!) */}
-      {scenarioStage === 'deciding' && !decisionMade && (
-        <Html position={[-3.5, 1.8, 0]} center>
-          <div
-            style={{
-              background: 'rgba(19, 22, 26, 0.98)',
-              border: '1px solid var(--sg-border)',
-              borderRadius: 14,
-              padding: '24px 30px',
-              textAlign: 'center',
-              fontFamily: 'Inter, sans-serif',
-              backdropFilter: 'blur(16px)',
-              minWidth: 420,
-              boxShadow: '0 25px 60px rgba(0,0,0,0.85)',
-            }}
-          >
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '4px 10px',
-                borderRadius: 6,
-                background: 'var(--sg-bg-elevated)',
-                border: '1px solid var(--sg-border)',
-                color: 'var(--sg-text-secondary)',
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-                marginBottom: 12,
-              }}
-            >
-              <ShieldAlert size={13} color="var(--sg-accent)" /> Procedural Safety Decision
-            </div>
-
-            <h3 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 800, color: 'var(--sg-text-primary)' }}>
-              Forklift Horn Echoes at Blind Intersection
-            </h3>
-            <p style={{ margin: '0 0 18px', fontSize: 13, color: 'var(--sg-text-secondary)', lineHeight: 1.5 }}>
-              You have approached the cross-aisle boundary line. Select your required operational protocol:
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button
-                onClick={() => onDecisionAnswer(true)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: '14px 18px',
-                  borderRadius: 8,
-                  background: 'var(--sg-bg-elevated)',
-                  border: '1px solid var(--sg-border)',
-                  color: 'var(--sg-text-primary)',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <div style={{ width: 22, height: 22, borderRadius: 4, background: 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
-                  A
-                </div>
-                <span>Come to a full stop before the red line, verify overhead convex mirror, and yield right-of-way</span>
-              </button>
-
-              <button
-                onClick={() => onDecisionAnswer(false)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: '14px 18px',
-                  borderRadius: 8,
-                  background: 'var(--sg-bg-elevated)',
-                  border: '1px solid var(--sg-border)',
-                  color: 'var(--sg-text-primary)',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <div style={{ width: 22, height: 22, borderRadius: 4, background: 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
-                  B
-                </div>
-                <span>Accelerate pace across the intersection before the approaching vehicle reaches the crossing</span>
-              </button>
-            </div>
-          </div>
-        </Html>
-      )}
-
-      {/* Outcome Debrief Modal */}
-      {scenarioStage === 'resolved' && decisionMade && decisionCorrect !== null && (
-        <Html position={[-3.5, 2.0, 0]} center>
-          <div
-            style={{
-              background: 'rgba(19, 22, 26, 0.98)',
-              border: `1px solid ${decisionCorrect ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)'}`,
-              borderRadius: 16,
-              padding: '26px 34px',
-              textAlign: 'center',
-              fontFamily: 'Inter, sans-serif',
-              backdropFilter: 'blur(16px)',
-              maxWidth: 420,
-              boxShadow: `0 20px 60px ${decisionCorrect ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.3)'}`,
-            }}
-          >
-            <div
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: '50%',
-                background: decisionCorrect ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 12px',
-                border: `1px solid ${decisionCorrect ? '#10b981' : '#ef4444'}`,
-              }}
-            >
-              {decisionCorrect ? <ShieldCheck size={24} color="#10b981" /> : <AlertOctagon size={24} color="#ef4444" />}
-            </div>
-
-            <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 800, color: decisionCorrect ? '#10b981' : '#ef4444' }}>
-              {decisionCorrect ? 'Procedural Standard Verified' : 'Critical Vehicle Collision Impact'}
-            </h3>
-
-            <p style={{ margin: '0 0 20px', fontSize: 13, color: 'var(--sg-text-secondary)', lineHeight: 1.5 }}>
-              {decisionCorrect
-                ? 'You stopped safely prior to the designated stop line and verified mirror reflections. The forklift cleared the intersection with compliant pedestrian-vehicle separation.'
-                : 'Entering an obstructed crossing zone without stopping resulted in a direct pedestrian strike by a 3,000kg forklift. Always respect vehicle right-of-way.'}
-            </p>
-
-            <button
-              onClick={onContinueVideo}
-              style={{
-                padding: '12px 24px',
-                borderRadius: 8,
-                background: decisionCorrect ? 'var(--sg-primary)' : 'var(--sg-accent)',
-                border: 'none',
-                color: decisionCorrect ? '#ffffff' : '#000000',
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              {decisionCorrect ? 'Proceed to Benchmark Video →' : 'Review Correct Procedure Video →'}
-            </button>
-          </div>
-        </Html>
-      )}
-
-      {viewMode === 'orbit' && (
-        <OrbitControls
-          enablePan
-          minDistance={3}
-          maxDistance={24}
-          minPolarAngle={0.1}
-          maxPolarAngle={Math.PI / 2.05}
-          target={[-2, 1.2, 0]}
-        />
-      )}
-    </>
-  )
+function BackgroundWorker() {
+  const ref = useRef<THREE.Group>(null)
+  const t = useRef(0)
+  useFrame((_, dt) => {
+    t.current += Math.min(dt, 0.05)
+    const g = ref.current
+    if (!g) return
+    const u = (t.current * 1.1) % 20
+    const forward = u < 10
+    const x = forward ? 5 + u : 15 - (u - 10)
+    g.position.set(x, 0, -0.45)
+    g.rotation.y = forward ? Math.PI / 2 : -Math.PI / 2
+  })
+  return <AnimatedWorker ref={ref} clip="Walk" speed={0.8} />
 }
 
-// ─── Main Simulation Phase View ───────────────────────────────────────────────
+// ─── Drill controller ────────────────────────────────────────────────────────
+
+type Stage =
+  | 'briefing'
+  | 'walk'
+  | 'alert'
+  | 'identify'
+  | 'hazard'
+  | 'decide'
+  | 'playout'
+  | 'explain'
+  | 'cross'
+  | 'debrief'
 
 interface Props {
   scenario: Scenario
 }
 
 export function SimulationPhaseView({ scenario }: Props) {
-  const phase = useSimulationStore((s) => s.phase)
   const setPhase = useSimulationStore((s) => s.setPhase)
-  const makeDecision = useSimulationStore((s) => s.makeDecision)
   const detectHazard = useSimulationStore((s) => s.detectHazard)
-  const decisionMade = useSimulationStore((s) => s.decisionMade)
-  const decisionCorrect = useSimulationStore((s) => s.decisionCorrect)
+  const detectedHazards = useSimulationStore((s) => s.detectedHazards)
+  const makeDecision = useSimulationStore((s) => s.makeDecision)
   const addAIMessage = useSimulationStore((s) => s.addAIMessage)
-  const vrAvailable = useSimulationStore((s) => s.vrAvailable)
-  const setVrAvailable = useSimulationStore((s) => s.setVrAvailable)
-  const setVrMode = useSimulationStore((s) => s.setVrMode)
-  const isPaused = useSimulationStore((s) => s.isPaused)
-  const reset = useSimulationStore((s) => s.reset)
+  const addEvent = useSimulationStore((s) => s.addEvent)
 
-  // Camera & Movement State
-  const [viewMode, setViewMode] = useState<'fpv' | 'orbit'>('fpv')
-  const [playerPos, setPlayerPos] = useState<[number, number, number]>([-9, 0, 0])
-  const [yaw, setYaw] = useState<number>(-Math.PI / 2)
-  const [pitch, setPitch] = useState<number>(0)
+  const audio = useSimAudio()
+  const { after, clearAll } = useSceneTimers()
+  const { toasts, push } = useToasts()
+  const { results, record, reset: resetResults } = useStepResults()
 
-  // Forklift State along Z
-  const [forkliftZ, setForkliftZ] = useState(12)
-  const [beaconIntensity, setBeaconIntensity] = useState(2.0)
+  const player = useRef<PlayerState>(createPlayer(START, -Math.PI / 2))
+  const forklift = useRef<ForkliftSim>({ z: 18, speed: 0, targetSpeed: 0, decel: 2.5, holdZ: FORKLIFT_HOLD_Z, wheel: 0 })
+  const forkliftGroup = useRef<THREE.Group | null>(null)
 
-  // Multi-Stage Scenario Flow
-  const [scenarioStage, setScenarioStage] = useState<
-    'walking' | 'pointing' | 'deciding' | 'animating_correct' | 'animating_wrong' | 'resolved'
-  >('walking')
-  const [isSlowMo, setIsSlowMo] = useState(false)
-  const [timeScale, setTimeScale] = useState(1.0)
-  const [isCrashing, setIsCrashing] = useState(false)
-  const [showClearanceHalo, setShowClearanceHalo] = useState(false)
-  const [soundMuted, setSoundMuted] = useState(false)
-
-  // Detect WebXR
+  const [stage, setStage] = useState<Stage>('briefing')
+  const [hazardOpen, setHazardOpen] = useState<HazardIntel | null>(null)
+  const [found, setFound] = useState<{ corner: boolean; forklift: boolean }>({ corner: false, forklift: false })
+  const [choice, setChoice] = useState<DecisionOption | null>(null)
+  const [slowmo, setSlowmo] = useState(false)
+  const [danger, setDanger] = useState(false)
+  const [flash, setFlash] = useState<{ key: number; color: string } | null>(null)
+  const [letterbox, setLetterbox] = useState(false)
+  const [blackout, setBlackout] = useState(0)
+  const [caption, setCaption] = useState<string | null>(null)
+  const [soundOn, setSoundOn] = useState(true)
+  const [coachOpen, setCoachOpen] = useState(false)
+  const [hintVisible, setHintVisible] = useState(true)
+  const [firstAttempt, setFirstAttempt] = useState<boolean | null>(null)
+  const stageRef = useRef<Stage>('briefing')
+  const choiceRef = useRef<DecisionOption | null>(null)
   useEffect(() => {
-    if (typeof navigator !== 'undefined' && 'xr' in navigator) {
-      ;(navigator as Navigator & { xr?: { isSessionSupported: (mode: string) => Promise<boolean> } }).xr
-        ?.isSessionSupported('immersive-vr')
-        .then((supported) => setVrAvailable(supported))
-        .catch(() => setVrAvailable(false))
+    stageRef.current = stage
+    choiceRef.current = choice
+  }, [stage, choice])
+
+  const currentStep =
+    stage === 'briefing' || stage === 'walk'
+      ? 'approach'
+      : stage === 'alert' || stage === 'identify' || stage === 'hazard'
+        ? 'identify'
+        : stage === 'cross'
+          ? 'cross'
+          : stage === 'debrief'
+            ? null
+            : 'yield'
+
+  // ── Helpers ──
+  const doFlash = (color: string) => setFlash({ key: Date.now(), color })
+
+  const resetForklift = (z: number, hold: number | null) => {
+    const f = forklift.current
+    f.z = z
+    f.speed = 0
+    f.targetSpeed = 0
+    f.holdZ = hold
+    f.decel = 2.5
+  }
+
+  // ── Stage: begin walking ──
+  const begin = () => {
+    audio.unlock()
+    audio.startLoop('hum')
+    setStage('walk')
+    setPhase('simulation_active')
+    const p = player.current
+    p.canWalk = true
+    p.canLook = true
+    addEvent('scenario_started', 'forklift-walkway')
+  }
+
+  // ── Trigger: reaching the approach zone ──
+  const triggerAlert = () => {
+    const p = player.current
+    p.canWalk = false
+    p.autoWalk = {
+      target: new THREE.Vector3(WAIT_X, 0, 0),
+      speed: 1.2,
+      onArrive: () => {
+        p.focus = MIRROR_POS.clone().add(new THREE.Vector3(-0.3, -0.2, 0.8))
+        p.focusRate = 2
+      },
     }
-  }, [setVrAvailable])
-
-  // Initial auto-walking along green road towards red line (x = -4.2)
-  useEffect(() => {
-    if (scenarioStage !== 'walking' || isPaused) return
-    const interval = setInterval(() => {
-      setPlayerPos(([px, py, pz]) => {
-        const nextX = px + 0.075 * timeScale
-        if (nextX >= -4.2) {
-          soundEngine.playHorn()
-          soundEngine.playSlowMoWhoosh()
-          setIsSlowMo(true)
-          setTimeScale(0.1)
-          setScenarioStage('pointing')
-          addAIMessage({
-            role: 'assistant',
-            content:
-              'Vehicle Warning: Approaching machinery detected. Identify the blind corner storage rack obstructing the cross-aisle sightline.',
-            response: { type: 'warning', message: '' },
-          })
-          return [-4.2, py, pz]
-        }
-        return [nextX, py, pz]
+    record('approach', true)
+    setStage('alert')
+    setPhase('hazard_detection')
+    audio.startLoop('engine', 0.6)
+    audio.horn(true)
+    after(350, () => audio.horn())
+    // Forklift starts its run behind the racking
+    const f = forklift.current
+    f.z = 17
+    f.targetSpeed = 2.6
+    f.holdZ = FORKLIFT_HOLD_Z
+    setCaption('A horn sounds from behind the racking on your right…')
+    after(1600, () => {
+      audio.whooshSlow()
+      player.current.timeScale = 0.18
+      setSlowmo(true)
+      setCaption(null)
+      setStage('identify')
+      push('Time slowed — identify the hazards before you act.', 'info', 4200)
+      addAIMessage({
+        role: 'assistant',
+        content: 'Horn at a blind crossing. Before moving, identify what you cannot see — the racking corner and what the mirror shows.',
+        response: { type: 'warning', message: '' },
       })
-
-      setForkliftZ((prev) => Math.max(prev - 0.12 * timeScale, 4.5))
-    }, 40)
-    return () => clearInterval(interval)
-  }, [scenarioStage, timeScale, addAIMessage, isPaused])
-
-  // Handle Blind Spot Selection
-  const handleBlindSpotSelected = (id: string) => {
-    detectHazard(id)
-    soundEngine.playSuccessChime()
-    setScenarioStage('deciding')
-    addAIMessage({
-      role: 'assistant',
-      content:
-        'Hazard confirmed: Blind corner racking identified. Now select your required operational protocol.',
-      response: { type: 'training_feedback', message: '', correct: true },
     })
   }
 
-  // Handle Decision Answer with Smooth Post-Answer Animation
-  const handleDecisionAnswer = (correct: boolean) => {
-    makeDecision(correct)
-    setIsSlowMo(false)
-    setTimeScale(1.0)
-
-    if (correct) {
-      setScenarioStage('animating_correct')
-      soundEngine.playHappyCelebrationSound()
-      setShowClearanceHalo(true)
-
-      let fZ = 4.5
-      const animInterval = setInterval(() => {
-        fZ -= 0.35
-        setForkliftZ(fZ)
-        if (fZ <= -10) {
-          clearInterval(animInterval)
-          setScenarioStage('resolved')
-          setPhase('outcome_correct')
-          addAIMessage({
-            role: 'assistant',
-            content:
-              'Standard verified: Maintained position behind the designated stop line. The vehicle has cleared the intersection safely.',
-            response: { type: 'training_feedback', message: '', correct: true },
-          })
-        }
-      }, 40)
+  // ── Identify hazards ──
+  const identify = (which: 'corner' | 'forklift') => {
+    if (found[which]) return
+    audio.notify()
+    const p = player.current
+    p.timeScale = 0
+    if (which === 'forklift') {
+      p.focus = MIRROR_POS.clone()
+      p.focusRate = 4
+      p.zoomTarget = 2.6
+      setCaption('In the mirror: a loaded forklift heading for the crossing.')
+      after(1700, () => {
+        setCaption(null)
+        setHazardOpen(HAZARDS.forklift)
+      })
     } else {
-      setScenarioStage('animating_wrong')
-      soundEngine.playRapidHorns()
+      p.focus = new THREE.Vector3(-RACK_END, 2.2, RACK_INNER + 0.4)
+      p.focusRate = 4
+      after(500, () => setHazardOpen(HAZARDS.corner))
+    }
+    detectHazard(HAZARDS[which].id)
+    setFound((f) => ({ ...f, [which]: true }))
+    setStage('hazard')
+  }
 
-      let pX = -4.2
-      let fZ = 4.5
-      let ticks = 0
-
-      const animInterval = setInterval(() => {
-        ticks++
-        if (pX < -0.5) pX += 0.1
-        setPlayerPos([pX, 0, 0])
-
-        fZ -= 0.4
-        setForkliftZ(fZ)
-
-        if (fZ <= 0.8 && !isCrashing) {
-          setIsCrashing(true)
-          soundEngine.playCrashSound()
-        }
-
-        if (ticks >= 45) {
-          clearInterval(animInterval)
-          setScenarioStage('resolved')
-          setPhase('outcome_incorrect')
-          addAIMessage({
-            role: 'assistant',
-            content:
-              'Incident recorded: Failure to yield at an obstructed intersection resulted in a direct pedestrian strike by mobile equipment.',
-            response: { type: 'warning', message: '', correct: false },
-          })
-        }
-      }, 40)
+  const acknowledgeHazard = () => {
+    setHazardOpen(null)
+    const p = player.current
+    p.zoomTarget = 1
+    const both = found.corner && found.forklift
+    if (both) {
+      record('identify', true)
+      p.focus = null
+      setPhase('decision_point')
+      setStage('decide')
+    } else {
+      p.timeScale = 0.18
+      p.focus = null
+      setStage('identify')
+      push(found.corner ? 'Now check what the convex mirror shows.' : 'Now look at what is blocking your view.', 'info')
     }
   }
 
-  const handleContinueVideo = () => {
+  // ── Decision ──
+  const choose = (o: DecisionOption) => {
+    setChoice(o)
+    setStage('playout')
+    if (firstAttempt === null) setFirstAttempt(o.verdict === 'correct')
+    record('yield', o.verdict === 'correct')
+    addEvent(o.verdict === 'correct' ? 'correct_action' : 'wrong_action', `intersection-${o.id}`)
+    setSlowmo(false)
+    const p = player.current
+    const f = forklift.current
+    p.timeScale = 1
+    p.focus = null
+    p.canLook = false
+    f.holdZ = null
+    f.z = FORKLIFT_HOLD_Z
+    setLetterbox(true)
+
+    if (o.id === 'yield') playYield()
+    else if (o.id === 'peek') playPeek()
+    else playHurry()
+  }
+
+  const playYield = () => {
+    const p = player.current
+    const f = forklift.current
+    f.speed = 2.2
+    f.targetSpeed = 2.4
+    p.focus = new THREE.Vector3(FORKLIFT_LANE_X, 1.6, f.z)
+    p.focusRate = 3
+    setCaption('You hold behind the line. The operator sees you and gives a short horn.')
+    after(1200, () => audio.horn())
+  }
+
+  const playPeek = () => {
+    const p = player.current
+    const f = forklift.current
+    p.autoWalk = { target: new THREE.Vector3(-0.8, 0, 0.1), speed: 1.4, face: false }
+    p.focus = new THREE.Vector3(FORKLIFT_LANE_X, 1.4, 6)
+    p.focusRate = 3
+    f.speed = 2.6
+    f.targetSpeed = 2.6
+    setCaption('You step past the rack end to get a look…')
+  }
+
+  const playHurry = () => {
+    const p = player.current
+    const f = forklift.current
+    p.autoWalk = { target: new THREE.Vector3(2.8, 0, 0), speed: 1.75 }
+    f.speed = 3.1
+    f.targetSpeed = 3.1
+    setCaption('You start across the aisle…')
+  }
+
+  // Per-frame trigger checks (no React state unless something happens)
+  const fired = useRef<Set<string>>(new Set())
+  const onTick = (s: PlayerState) => {
+      const st = stageRef.current
+      const f = forklift.current
+      if (st === 'walk' && s.pos.x > -6.8 && !fired.current.has('alert')) {
+        fired.current.add('alert')
+        triggerAlert()
+      }
+      if (st !== 'playout') return
+      const id = choiceRef.current?.id
+
+      if (id === 'yield') {
+        if (s.focus) s.focus.set(FORKLIFT_LANE_X, 1.6, f.z - 0.6)
+        if (f.z < -5 && !fired.current.has('yield-clear')) {
+          fired.current.add('yield-clear')
+          crossAfterYield()
+        }
+      }
+
+      if (id === 'peek') {
+        if (s.focus) s.focus.set(FORKLIFT_LANE_X, 1.5, Math.max(f.z - 2, 0.5))
+        if (f.z < 5.6 && !fired.current.has('peek-brake')) {
+          fired.current.add('peek-brake')
+          f.targetSpeed = 0
+          f.decel = 3.2
+          f.holdZ = 2.75
+          audio.brakeSqueal()
+          audio.hornBlasts(3)
+          s.trauma = 0.45
+          setDanger(true)
+          setCaption('The operator slams on the brakes —')
+        }
+        if (fired.current.has('peek-brake') && f.speed < 0.05 && !fired.current.has('peek-done')) {
+          fired.current.add('peek-done')
+          setCaption('— and stops half a metre from you.')
+          audio.heartbeat(3)
+          after(2200, () => finishPlayout())
+        }
+      }
+
+      if (id === 'hurry') {
+        const overlapX = Math.abs(s.pos.x - FORKLIFT_LANE_X) < 1.0
+        const forkTip = f.z - 2.3
+        if (f.z < 3.7 && !fired.current.has('hurry-slow')) {
+          fired.current.add('hurry-slow')
+          // Brief slow-motion as the forklift clears the racking
+          s.timeScale = 0.35
+          s.focus = new THREE.Vector3(FORKLIFT_LANE_X, 1.4, f.z - 1.5)
+          s.focusRate = 6
+          setSlowmo(true)
+          audio.brakeSqueal()
+          audio.heartbeat(2)
+          f.targetSpeed = 2.0
+          f.decel = 3.0
+          setCaption('The forklift emerges from behind the racking — too close to stop.')
+        }
+        if (s.focus && fired.current.has('hurry-slow')) s.focus.set(FORKLIFT_LANE_X, 1.4, f.z - 1.5)
+        if (overlapX && forkTip < 0.35 && f.z > -1 && !fired.current.has('impact')) {
+          fired.current.add('impact')
+          impact()
+        }
+      }
+  }
+
+
+  const impact = () => {
+    const p = player.current
+    const f = forklift.current
+    audio.impact(true)
+    setSlowmo(false)
+    setDanger(true)
+    doFlash('rgba(220,38,38,0.85)')
+    setCaption(null)
+    p.timeScale = 1
+    p.autoWalk = null
+    p.trauma = 1
+    f.targetSpeed = 0
+    f.decel = 5
+    f.holdZ = f.z - 0.4
+    // Knock-down: thrown back along -Z and onto the floor
+    const start = p.pos.clone()
+    let t = 0
+    p.script = (s, dt, camera) => {
+      t += dt
+      const u = Math.min(1, t / 0.9)
+      const e = 1 - Math.pow(1 - u, 3)
+      s.pos.set(start.x + 0.4 * e, 0, start.z - 1.7 * e)
+      const eye = THREE.MathUtils.lerp(1.65, 0.28, e)
+      camera.position.set(s.pos.x, eye, s.pos.z)
+      camera.quaternion.setFromEuler(new THREE.Euler(THREE.MathUtils.lerp(s.pitch, 0.9, e), s.yaw + 0.5 * e, THREE.MathUtils.lerp(0, 1.1, e), 'YXZ'))
+      return true
+    }
+    after(1700, () => setBlackout(0.85))
+    after(2600, () => finishPlayout())
+  }
+
+  const crossAfterYield = () => {
+    const p = player.current
+    setStage('cross')
+    setCaption('Aisle clear. Look both ways — then cross on the zebra.')
+    p.focus = new THREE.Vector3(FORKLIFT_LANE_X, 1.5, -8)
+    p.focusRate = 3.5
+    after(1100, () => {
+      p.focus = new THREE.Vector3(FORKLIFT_LANE_X, 1.5, 8)
+    })
+    after(2200, () => {
+      p.focus = null
+      setCaption(null)
+      p.autoWalk = {
+        target: new THREE.Vector3(3.2, 0, 0),
+        speed: 1.5,
+        onArrive: () => {
+          record('cross', true)
+          finishPlayout()
+        },
+      }
+    })
+  }
+
+  const finishPlayout = () => {
+    audio.setLoopVolume('engine', 0.25)
+    setLetterbox(false)
+    setCaption(null)
+    const correct = choiceRef.current?.verdict === 'correct'
+    setPhase(correct ? 'outcome_correct' : 'outcome_incorrect')
+    if (!correct) audio.error()
+    else audio.success()
+    addAIMessage({
+      role: 'assistant',
+      content: correct
+        ? 'Good yield: stopped behind the line, used the mirror and crossed only once the aisle was clear.'
+        : 'Incident recorded: entering an obstructed crossing with a forklift approaching. Review the yield procedure and try again.',
+      response: { type: correct ? 'training_feedback' : 'warning', message: '', correct },
+    })
+    setStage('explain')
+  }
+
+  // ── After the explanation ──
+  const retry = () => {
+    clearAll()
+    fired.current = new Set(['alert'])
+    const p = player.current
+    p.script = null
+    p.autoWalk = null
+    p.pos.set(WAIT_X, 0, 0)
+    p.vel.set(0, 0, 0)
+    p.yaw = -Math.PI / 2 + 0.25
+    p.pitch = 0.05
+    p.roll = 0
+    p.trauma = 0
+    p.timeScale = 0
+    p.canLook = true
+    resetForklift(FORKLIFT_HOLD_Z, FORKLIFT_HOLD_Z)
+    setDanger(false)
+    setBlackout(0)
+    setChoice(null)
+    setPhase('decision_point')
+    setStage('decide')
+  }
+
+  const toDebrief = () => {
+    setStage('debrief')
+    audio.stopLoop('engine')
+  }
+
+  const finish = () => {
+    makeDecision(firstAttempt === true)
+    audio.stopAllLoops()
     setPhase('positive_video')
   }
 
-  const handleEnterVR = async () => {
-    if (!vrAvailable) return
-    try {
-      const xr = (navigator as Navigator & { xr?: WebXR }).xr
-      if (xr) {
-        const session = await xr.requestSession('immersive-vr', {
-          requiredFeatures: ['local-floor'],
-          optionalFeatures: ['hand-tracking'],
-        })
-        setVrMode(true)
-        session.addEventListener('end', () => setVrMode(false))
-      }
-    } catch (e) {
-      console.warn('VR session initialization failed:', e)
-    }
+  const replay = () => {
+    clearAll()
+    fired.current = new Set()
+    const p = player.current
+    Object.assign(p, createPlayer(START, -Math.PI / 2))
+    resetForklift(18, FORKLIFT_HOLD_Z)
+    resetResults()
+    setFound({ corner: false, forklift: false })
+    setChoice(null)
+    setDanger(false)
+    setBlackout(0)
+    setSlowmo(false)
+    setLetterbox(false)
+    setCaption(null)
+    setFirstAttempt(null)
+    setStage('briefing')
+    setPhase('simulation_active')
   }
 
+  const autoWalkToCrossing = () => {
+    const p = player.current
+    p.autoWalk = { target: new THREE.Vector3(-6.5, 0, 0), speed: 2.2 }
+  }
+
+  // Keyboard: E to auto-walk / act on the current prompt
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'KeyE') return
+      if (stageRef.current === 'walk') autoWalkToCrossing()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
+  useEffect(() => {
+    audio.setEnabled(soundOn)
+  }, [audio, soundOn])
+
+  const constrain = useCallback((next: THREE.Vector3) => {
+    next.z = THREE.MathUtils.clamp(next.z, -1.0, 1.0)
+    const st = stageRef.current
+    const maxX = st === 'walk' || st === 'alert' || st === 'identify' || st === 'hazard' || st === 'decide' ? WAIT_X + 0.05 : 4
+    next.x = THREE.MathUtils.clamp(next.x, -15, maxX)
+  }, [])
+
+  const hazardsFound = detectedHazards.filter((h) => h === HAZARDS.corner.id || h === HAZARDS.forklift.id).length
+
   return (
-    <div style={{ position: 'relative', width: '100%', height: 'calc(100vh - 56px)', userSelect: 'none' }}>
-      {/* 3D Canvas */}
-      <Canvas
-        shadows
-        camera={{ position: [-9, 1.65, 0], fov: 65 }}
-        gl={{ antialias: true, powerPreference: 'high-performance' }}
-        style={{ background: '#0d0f11' }}
-      >
-        <fog attach="fog" args={['#0d0f11', 16, 45]} />
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#0b0f14', userSelect: 'none' }}>
+      <SimCanvas background="#1a1f26">
+        <fog attach="fog" args={['#1a1f26', 18, 46]} />
+        <hemisphereLight args={['#e8eef5', '#3a3530', 1.1]} />
+        <directionalLight
+          position={[6, 14, 4]}
+          intensity={1.5}
+          color="#fff6e8"
+          castShadow
+          shadow-mapSize={[1024, 1024]}
+          shadow-bias={-0.0004}
+          shadow-normalBias={0.04}
+        >
+          <orthographicCamera attach="shadow-camera" args={[-16, 16, 16, -16, 1, 40]} />
+        </directionalLight>
+        <ambientLight intensity={0.15} />
+
+        <PlayerRig playerRef={player} constrain={constrain} onTick={onTick} onFirstInput={() => setHintVisible(false)} />
+        <Warehouse />
+        <ConvexMirror />
+        <ForkliftModel simRef={forklift} playerRef={player} groupRef={forkliftGroup} />
         <Suspense fallback={null}>
-          <SimulationWorld
-            viewMode={viewMode}
-            isSlowMo={isSlowMo}
-            timeScale={timeScale}
-            playerPos={playerPos}
-            setPlayerPos={setPlayerPos}
-            yaw={yaw}
-            setYaw={setYaw}
-            pitch={pitch}
-            setPitch={setPitch}
-            scenarioStage={scenarioStage}
-            forkliftZ={forkliftZ}
-            beaconIntensity={beaconIntensity}
-            showClearanceHalo={showClearanceHalo}
-            onBlindSpotSelected={handleBlindSpotSelected}
-            onDecisionAnswer={handleDecisionAnswer}
-            onContinueVideo={handleContinueVideo}
-            decisionMade={decisionMade}
-            decisionCorrect={decisionCorrect}
-            isCrashing={isCrashing}
-          />
+          <BackgroundWorker />
         </Suspense>
-      </Canvas>
 
-      {/* Reticle Pointer in First Person View */}
-      {viewMode === 'fpv' && !decisionMade && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            pointerEvents: 'none',
-            zIndex: 20,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 4,
-          }}
-        >
-          <div
-            style={{
-              width: 16,
-              height: 16,
-              borderRadius: '50%',
-              border: `2px solid ${isSlowMo ? '#f59e0b' : 'rgba(255,255,255,0.7)'}`,
-              background: isSlowMo ? 'rgba(245,158,11,0.3)' : 'transparent',
-              boxShadow: isSlowMo ? '0 0 14px #f59e0b' : 'none',
-            }}
+        {/* Approach guidance */}
+        <PulseRing position={[-6.5, 0, 0]} visible={stage === 'walk'} />
+        <PulseRing position={[WAIT_X, 0, 0]} color="#ef4444" radius={0.55} visible={stage === 'alert'} />
+
+        {/* Hazard tags */}
+        {(stage === 'identify' || stage === 'hazard') && (
+          <>
+            <Html position={[-RACK_END - 0.1, 2.4, RACK_INNER + 0.3]} center zIndexRange={[20, 0]}>
+              <WorldTag
+                label={found.corner ? 'Blind corner ✓' : 'What is blocking your view?'}
+                sub={found.corner ? undefined : 'Click to inspect'}
+                tone={found.corner ? 'done' : 'hazard'}
+                onClick={() => identify('corner')}
+              />
+            </Html>
+            <Html position={[MIRROR_POS.x, MIRROR_POS.y + 0.75, MIRROR_POS.z]} center zIndexRange={[20, 0]}>
+              <WorldTag
+                label={found.forklift ? 'Forklift in mirror ✓' : 'Convex safety mirror'}
+                sub={found.forklift ? undefined : 'Click to check the mirror'}
+                tone={found.forklift ? 'done' : 'target'}
+                onClick={() => identify('forklift')}
+              />
+            </Html>
+          </>
+        )}
+      </SimCanvas>
+
+      <ScreenFX slowmo={slowmo} danger={danger} flash={flash} letterbox={letterbox} blackout={blackout} caption={caption} />
+
+      {stage !== 'briefing' && stage !== 'debrief' && (
+        <>
+          <MissionPanel
+            title="Blind-corner crossing"
+            steps={STEPS}
+            currentId={currentStep}
+            results={results}
+            chips={[
+              { label: 'Hazards found', value: `${hazardsFound} / 2`, tone: hazardsFound === 2 ? 'ok' : 'warn' },
+              {
+                label: 'Forklift',
+                value: stage === 'walk' ? 'Not visible' : stage === 'cross' ? 'Passed' : 'Approaching',
+                tone: stage === 'walk' ? 'info' : stage === 'cross' ? 'ok' : 'bad',
+              },
+            ]}
           />
-        </div>
+          <SimToolbar soundOn={soundOn} onToggleSound={() => setSoundOn((v) => !v)} coachOpen={coachOpen} onToggleCoach={() => setCoachOpen((v) => !v)} />
+        </>
       )}
 
-      {/* Crash Red Flash Impact Vignette */}
-      {isCrashing && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            background: 'rgba(239, 68, 68, 0.45)',
-            boxShadow: 'inset 0 0 120px #ef4444',
-            zIndex: 25,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <div
-            style={{
-              background: 'rgba(0,0,0,0.85)',
-              padding: '16px 32px',
-              borderRadius: 12,
-              border: '2px solid #ef4444',
-              color: '#ef4444',
-              fontSize: 20,
-              fontWeight: 800,
-              letterSpacing: '0.05em',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-            }}
-          >
-            <AlertOctagon size={26} /> VEHICLE COLLISION DETECTED
-          </div>
-        </div>
-      )}
+      <ToastStack toasts={toasts} />
 
-      {/* Slow-Motion Time-Dilation Vignette */}
-      {isSlowMo && !isCrashing && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            boxShadow: 'inset 0 0 100px rgba(245, 158, 11, 0.45)',
-            border: '2px solid rgba(245,158,11,0.6)',
-            zIndex: 15,
-          }}
+      {stage === 'walk' && (
+        <>
+          <ObjectivePrompt
+            text="Walk along the green pedestrian walkway to the cross-aisle"
+            sub="Stay inside the yellow barriers"
+            autoWalkLabel="Walk for me"
+            onAutoWalk={autoWalkToCrossing}
+          />
+          {hintVisible && <ControlsHint />}
+        </>
+      )}
+      {stage === 'identify' && (
+        <ObjectivePrompt
+          tone="danger"
+          text={`Identify the hazards at this crossing (${hazardsFound}/2)`}
+          sub="Click the markers in the scene — drag to look around"
         />
       )}
 
-      {/* HUD Overlay */}
-      <SimulationHUD scenario={scenario} />
-
-      {/* Top Center Camera & Audio Bar */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 16,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 30,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          background: 'rgba(13, 15, 17, 0.85)',
-          backdropFilter: 'blur(10px)',
-          padding: '6px 14px',
-          borderRadius: 999,
-          border: '1px solid var(--sg-border)',
-        }}
-      >
-        <button
-          onClick={() => setViewMode(viewMode === 'fpv' ? 'orbit' : 'fpv')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '5px 12px',
-            borderRadius: 999,
-            background: viewMode === 'fpv' ? 'var(--sg-accent)' : 'transparent',
-            color: viewMode === 'fpv' ? '#000000' : 'var(--sg-text-secondary)',
-            border: 'none',
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: 'pointer',
-          }}
-        >
-          <UserCheck size={14} /> {viewMode === 'fpv' ? 'First-Person FPV (VR View)' : 'Tactical 3D Orbit'}
-        </button>
-
-        <div style={{ width: 1, height: 14, background: 'var(--sg-border)' }} />
-
-        <button
-          onClick={() => {
-            soundEngine.enabled = !soundEngine.enabled
-            setSoundMuted(!soundEngine.enabled)
-          }}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: soundMuted ? '#ef4444' : 'var(--sg-text-secondary)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            padding: 4,
-          }}
-        >
-          {soundMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
-        </button>
-      </div>
-
-      {/* Bottom Controls Helper Bar in FPV Mode */}
-      {viewMode === 'fpv' && !decisionMade && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 24,
-            left: 24,
-            zIndex: 30,
-            background: 'rgba(13, 15, 17, 0.85)',
-            backdropFilter: 'blur(8px)',
-            padding: '8px 16px',
-            borderRadius: 8,
-            border: '1px solid var(--sg-border)',
-            fontSize: 12,
-            color: 'var(--sg-text-secondary)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 16,
-          }}
-        >
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ padding: '2px 6px', background: 'var(--sg-bg-elevated)', borderRadius: 4, fontWeight: 700, color: '#fff' }}>
-              WASD / Arrows
-            </span>{' '}
-            Walk on Walkway
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <MousePointer size={14} color="var(--sg-accent)" /> Drag Mouse to Look 360°
-          </span>
+      {coachOpen && (
+        <div style={{ position: 'absolute', top: 76, right: 20, zIndex: 35, width: 320, maxWidth: 'calc(100vw - 40px)' }}>
+          <AITrainerPanel scenario={scenario} compact />
         </div>
       )}
 
-      {/* Floating AI Trainer */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 70,
-          right: 16,
-          zIndex: 30,
-          width: 310,
-        }}
-      >
-        <AITrainerPanel scenario={scenario} compact />
-      </div>
-
-      {/* VR Launch & Replay Bar */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 24,
-          right: 16,
-          zIndex: 30,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-        }}
-      >
-        {vrAvailable ? (
-          <button
-            className="sg-btn sg-btn-vr"
-            onClick={handleEnterVR}
-            style={{ fontSize: 13, padding: '8px 16px', gap: 6, fontWeight: 700 }}
-          >
-            <Glasses size={16} /> Enter Immersive WebXR VR
-          </button>
-        ) : (
-          <div
-            style={{
-              fontSize: 11,
-              color: 'var(--sg-text-muted)',
-              padding: '6px 12px',
-              background: 'rgba(13,15,17,0.85)',
-              borderRadius: 6,
-              border: '1px solid var(--sg-border)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            <Eye size={13} color="var(--sg-accent)" /> FPV Realistic Simulator Active
-          </div>
+      <AnimatePresence>
+        {stage === 'briefing' && (
+          <BriefingCard
+            key="brief"
+            eyebrow="Warehouse · Blind-corner crossing"
+            title={scenario.title}
+            role="You are a picker walking to your next pick location."
+            situation="Your route crosses a forklift aisle where tall, fully-loaded racking hides traffic coming from the right. Forklifts are operating on this shift."
+            objectives={[
+              'Walk the marked pedestrian walkway to the crossing',
+              'Identify what makes this crossing dangerous',
+              'Choose the correct way to deal with an approaching forklift',
+              'Cross safely once the aisle is clear',
+            ]}
+            controls={[
+              ['W A S D', 'walk'],
+              ['Drag', 'look around'],
+              ['E', 'walk for me'],
+              ['Space', 'pause'],
+            ]}
+            onBegin={begin}
+          />
         )}
-        <button
-          onClick={() => {
-            reset()
-            setPlayerPos([-9, 0, 0])
-            setForkliftZ(12)
-            setYaw(-Math.PI / 2)
-            setPitch(0)
-            setScenarioStage('walking')
-            setIsSlowMo(false)
-            setTimeScale(1.0)
-            setIsCrashing(false)
-            setShowClearanceHalo(false)
-            setPhase('simulation_active')
-          }}
-          className="sg-btn sg-btn-secondary"
-          style={{ fontSize: 12, padding: '8px 14px', gap: 6 }}
-        >
-          <RotateCcw size={13} /> Replay Scenario
-        </button>
-      </div>
+        {hazardOpen && <HazardCard key={hazardOpen.id} hazard={hazardOpen} onAcknowledge={acknowledgeHazard} cta={found.corner && found.forklift ? 'Decide what to do' : 'Continue scanning'} />}
+        {stage === 'decide' && <DecisionCard key="decide" decision={DECISION} index={1} total={1} onChoose={choose} />}
+        {stage === 'explain' && choice && (
+          <ExplanationCard
+            key="explain"
+            verdict={choice.verdict}
+            explanation={choice.outcome}
+            primaryLabel={choice.verdict === 'correct' ? 'See debrief' : 'Retry from the stop line'}
+            onPrimary={choice.verdict === 'correct' ? toDebrief : retry}
+          />
+        )}
+        {stage === 'debrief' && (
+          <DebriefCard
+            key="debrief"
+            title="Crossing completed safely"
+            summary="You recognised the blind corner, read the approaching forklift in the mirror and yielded before crossing — the behaviours that prevent most pedestrian struck-by incidents in warehouses."
+            steps={STEPS}
+            results={results}
+            hazardsFound={hazardsFound}
+            totalHazards={2}
+            onContinue={finish}
+            onReplay={replay}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
-}
-
-interface WebXR {
-  isSessionSupported: (mode: string) => Promise<boolean>
-  requestSession: (
-    mode: string,
-    options?: Record<string, unknown>
-  ) => Promise<{ addEventListener: (event: string, cb: () => void) => void }>
 }

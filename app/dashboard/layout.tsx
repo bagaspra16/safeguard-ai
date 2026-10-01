@@ -17,7 +17,11 @@ import { AnimatePresence, motion } from 'framer-motion'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const [isDockCollapsed, setIsDockCollapsed] = useState(false)
+  // Inside a training session the dock starts collapsed so it doesn't cover
+  // the drill; the chevron still expands it.
+  const inSession = /^\/dashboard\/training\/[^/]+/.test(pathname)
+  const [dockPref, setDockPref] = useState<boolean | null>(null)
+  const isDockCollapsed = dockPref ?? inSession
 
   const dockItems: DockItemData[] = [
     {
@@ -89,7 +93,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <motion.button
           layout
           type="button"
-          onClick={() => setIsDockCollapsed((prev) => !prev)}
+          onClick={() => setDockPref(!isDockCollapsed)}
           title={isDockCollapsed ? 'Expand Navigation Dock' : 'Collapse (Fullscreen View)'}
           aria-label={isDockCollapsed ? 'Expand Navigation Dock' : 'Collapse (Fullscreen View)'}
           whileHover={{ scale: 1.1 }}

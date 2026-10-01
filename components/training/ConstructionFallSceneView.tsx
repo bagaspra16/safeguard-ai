@@ -1,1526 +1,1347 @@
 'use client'
 
-import { useRef, useState, useEffect, Suspense, useMemo } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Html } from '@react-three/drei'
+import { useFrame } from '@react-three/fiber'
+import { Html, Sky } from '@react-three/drei'
 import type { Scenario } from '@/types'
 import { useSimulationStore } from '@/lib/simulation/store'
-import { SimulationHUD } from './SimulationHUD'
+import { Boxes, Tubes, type BoxItem, type Segment } from '@/components/landing/simulator/parts/Instances'
+import { TowerCrane } from '@/components/landing/simulator/parts/TowerCrane'
+import { PlayerRig, createPlayer, type PlayerState } from './sim3d/PlayerRig'
+import { SimCanvas, useSceneTimers, useSimAudio, useStepResults } from './sim3d/SimCanvas'
+import { AnimatedWorker } from './sim3d/AnimatedWorker'
+import { PulseRing } from './sim3d/effects'
+import { concreteTexture, dirtTexture, hazardStripeTexture, signTexture, windowsTexture } from './sim3d/textures'
+import { Sign } from './sim3d/scenery'
 import {
-  Glasses,
-  RotateCcw,
-  ShieldAlert,
-  Eye,
-  Crosshair,
-  Volume2,
-  VolumeX,
-  UserCheck,
-  MousePointer,
-  AlertOctagon,
-  ShieldCheck,
-  HardHat,
-  Wind,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Link,
-  ChevronRight,
-  Sparkles,
-  ArrowDown,
-  ArrowUp,
-  ArrowLeft,
-  ArrowRight,
-  Compass,
-} from 'lucide-react'
+  AnimatePresence,
+  BriefingCard,
+  ControlsHint,
+  DebriefCard,
+  DecisionCard,
+  ExplanationCard,
+  HazardCard,
+  MissionPanel,
+  ObjectivePrompt,
+  ScreenFX,
+  SimToolbar,
+  ToastStack,
+  WorldTag,
+  useToasts,
+  type Decision,
+  type DecisionOption,
+  type HazardIntel,
+  type StepDef,
+} from './sim3d/ui'
 
-// ─── Procedural High-Altitude Construction & Fall Sound Engine ────────────────
+// ─── Layout ──────────────────────────────────────────────────────────────────
+// Steel frame, working level 8 m above ground. West bay (x -12…-6) and east
+// bay (x 6…12) are decked; between them a two-plank scaffold walkway runs
+// along a beam at z = 0 under a horizontal lifeline. The east bay's outer
+// edge (x = 12) has no guardrail.
 
-class ConstructionFallSoundEngine {
-  private ctx: AudioContext | null = null
-  public enabled: boolean = true
+const LEVEL = 8
+const START: [number, number, number] = [-10.5, LEVEL, 0]
+const LIFELINE_Y = LEVEL + 1.85
+const WALK_HALF = 0.32
+const PLANK_LOOSE = { x0: 0.45, x1: 3.35 }
+const EDGE_X = 12
+const COWORKER_POS = new THREE.Vector3(11.15, LEVEL, 1.5)
 
-  private init() {
-    if (!this.ctx && typeof window !== 'undefined') {
-      const AudioCtx =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-      if (AudioCtx) this.ctx = new AudioCtx()
-    }
-  }
+// ─── Drill content ───────────────────────────────────────────────────────────
 
-  playCarabinerSnap() {
-    if (!this.enabled) return
-    this.init()
-    if (!this.ctx) return
-    try {
-      const t = this.ctx.currentTime
-      const osc = this.ctx.createOscillator()
-      const gain = this.ctx.createGain()
-      osc.type = 'highpass' as unknown as OscillatorType
-      osc.frequency.setValueAtTime(2800, t)
-      gain.gain.setValueAtTime(0.4, t)
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09)
-      osc.connect(gain)
-      gain.connect(this.ctx.destination)
-      osc.start(t)
-      osc.stop(t + 0.09)
-    } catch {}
-  }
+const STEPS: StepDef[] = [
+  { id: 'tieoff', label: '100% tie-off' },
+  { id: 'plank', label: 'Unsecured plank' },
+  { id: 'coworker', label: 'Unclipped coworker' },
+  { id: 'guardrail', label: 'Open edge' },
+]
 
-  playWindRush() {
-    if (!this.enabled) return
-    this.init()
-    if (!this.ctx) return
-    try {
-      const t = this.ctx.currentTime
-      const bufferSize = this.ctx.sampleRate * 2.5
-      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate)
-      const data = buffer.getChannelData(0)
-      for (let i = 0; i < bufferSize; i++) {
-        data[i] = Math.random() * 2 - 1
-      }
-      const noise = this.ctx.createBufferSource()
-      noise.buffer = buffer
-
-      const filter = this.ctx.createBiquadFilter()
-      filter.type = 'bandpass'
-      filter.frequency.setValueAtTime(800, t)
-      filter.frequency.linearRampToValueAtTime(2200, t + 1.5)
-
-      const gain = this.ctx.createGain()
-      gain.gain.setValueAtTime(0.6, t)
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 2.5)
-
-      noise.connect(filter)
-      filter.connect(gain)
-      gain.connect(this.ctx.destination)
-      noise.start(t)
-      noise.stop(t + 2.5)
-    } catch {}
-  }
-
-  playGroundImpact() {
-    if (!this.enabled) return
-    this.init()
-    if (!this.ctx) return
-    try {
-      const t = this.ctx.currentTime
-      const osc = this.ctx.createOscillator()
-      const gain = this.ctx.createGain()
-      osc.type = 'sawtooth'
-      osc.frequency.setValueAtTime(90, t)
-      osc.frequency.exponentialRampToValueAtTime(20, t + 0.8)
-      gain.gain.setValueAtTime(1.0, t)
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.8)
-      osc.connect(gain)
-      gain.connect(this.ctx.destination)
-      osc.start(t)
-      osc.stop(t + 0.8)
-    } catch {}
-  }
-
-  playPlankCreak() {
-    if (!this.enabled) return
-    this.init()
-    if (!this.ctx) return
-    try {
-      const t = this.ctx.currentTime
-      const osc = this.ctx.createOscillator()
-      const gain = this.ctx.createGain()
-      osc.type = 'sawtooth'
-      osc.frequency.setValueAtTime(220, t)
-      osc.frequency.linearRampToValueAtTime(120, t + 0.35)
-      gain.gain.setValueAtTime(0.3, t)
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4)
-      osc.connect(gain)
-      gain.connect(this.ctx.destination)
-      osc.start(t)
-      osc.stop(t + 0.4)
-    } catch {}
-  }
-
-  playSuccessChime() {
-    if (!this.enabled) return
-    this.init()
-    if (!this.ctx) return
-    try {
-      const t = this.ctx.currentTime
-      const freqs = [523.25, 659.25, 783.99, 1046.5]
-      freqs.forEach((f, i) => {
-        if (!this.ctx) return
-        const osc = this.ctx.createOscillator()
-        const gain = this.ctx.createGain()
-        osc.type = 'triangle'
-        osc.frequency.setValueAtTime(f, t + i * 0.08)
-        gain.gain.setValueAtTime(0.12, t + i * 0.08)
-        gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.08 + 0.4)
-        osc.connect(gain)
-        gain.connect(this.ctx.destination)
-        osc.start(t + i * 0.08)
-        osc.stop(t + i * 0.08 + 0.4)
-      })
-    } catch {}
-  }
-
-  playWrongBuzzer() {
-    if (!this.enabled) return
-    this.init()
-    if (!this.ctx) return
-    try {
-      const t = this.ctx.currentTime
-      const osc = this.ctx.createOscillator()
-      const gain = this.ctx.createGain()
-      osc.type = 'sawtooth'
-      osc.frequency.setValueAtTime(150, t)
-      gain.gain.setValueAtTime(0.25, t)
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.6)
-      osc.connect(gain)
-      gain.connect(this.ctx.destination)
-      osc.start(t)
-      osc.stop(t + 0.6)
-    } catch {}
-  }
+const HAZARDS: Record<'plank' | 'coworker' | 'edge', HazardIntel> = {
+  plank: {
+    id: 'unsecured-plank-01',
+    name: 'Unsecured scaffold plank — tip hazard',
+    severity: 'critical',
+    whatsWrong:
+      'This plank has slid along the walkway. Its west end no longer rests on a bearer — it overhangs by about 45 cm with nothing under it, and it isn\'t cleated or clamped.',
+    risk: 'Step on the unsupported end and the plank pivots on the next bearer like a seesaw, dropping you through the walkway — 8 m to the ground.',
+    control: 'Stop. Don\'t step on it. Re-seat it on both bearers with at least 15 cm of bearing, clamp or cleat it, and get the scaffold inspected and re-tagged.',
+    ref: 'OSHA 1926.451(b)(4)–(5)',
+  },
+  coworker: {
+    id: 'disconnected-lanyard-01',
+    name: 'Coworker working unclipped at the edge',
+    severity: 'critical',
+    whatsWrong:
+      'Your coworker has unclipped both lanyard hooks to reach a bolt on the edge column. He\'s leaning out over an unprotected edge, 8 m up.',
+    risk: 'A slip, a gust or a shift of weight and there is nothing to stop him. Falls are the leading cause of death in construction.',
+    control: 'Use your Stop Work Authority: call to him from a safe distance, get him to step back from the edge and reconnect before work continues.',
+    ref: 'OSHA 1926.501(b)(1) · 1926.502(d)',
+  },
+  edge: {
+    id: 'missing-guardrail-01',
+    name: 'Missing guardrail — open edge',
+    severity: 'critical',
+    whatsWrong: 'The outer edge of this bay has no top rail, mid-rail or toe board — just an 8 m drop. Only a few stub posts remain.',
+    risk: 'Anyone walking backwards, carrying material or tripping near this edge can go straight over it. Loose tools and bolts can also fall onto people below.',
+    control: 'Stop work at this edge until a compliant guardrail is installed (or everyone exposed is tied off), and report it to the supervisor.',
+    ref: 'OSHA 1926.501(b)(1) · 1926.502(b)',
+  },
 }
 
-const soundEngine = new ConstructionFallSoundEngine()
+type StepId = 'tieoff' | 'plank' | 'coworker' | 'guardrail'
 
-// ─── Highly Realistic 3D High-Altitude Skyscraper Steel Frame ─────────────────
+const DECISIONS: Record<StepId, Decision> = {
+  tieoff: {
+    id: 'tieoff',
+    tag: 'Tie-off',
+    title: 'You\'re about to step onto the scaffold walkway',
+    situation:
+      'Beyond the guardrail gap, a two-plank walkway runs 12 m along the beam to the east bay — with an 8 m drop on both sides. A horizontal lifeline runs overhead. You\'re wearing a full-body harness with a twin (Y) shock-absorbing lanyard.',
+    cues: ['Walkway is about 60 cm wide, no guardrails', 'Lifeline anchors are rated and tagged', 'Light wind gusting across the frame'],
+    question: 'How do you cross?',
+    options: [
+      {
+        id: 'single',
+        label: 'Clip one hook and swap it at each post',
+        detail: 'One lanyard is enough — unclip and re-clip it as you pass the stanchions.',
+        verdict: 'risky',
+        outcome: {
+          title: 'Unprotected while passing a post',
+          happened:
+            'At the middle stanchion you unclipped your only hook to pass it. A gust hit you at that moment and you lurched towards the edge — you grabbed the post just in time.',
+          why: 'With one hook, every pass of an anchor point is a moment with zero fall protection. That moment is exactly when you\'re off-balance, reaching and looking up.',
+          rule: 'Workers on a walkway with unprotected sides and edges 6 ft (1.8 m) or more above a lower level must be protected at all times — the twin lanyard lets you stay connected while you move past anchors.',
+          ruleRef: 'OSHA 1926.501(b)(1) · 1926.502(d)',
+          takeaway: 'Two hooks, and at least one is always clipped — 100% tie-off.',
+        },
+      },
+      {
+        id: 'none',
+        label: 'Walk it unclipped — it\'s only 12 m',
+        detail: 'Clipping in slows you down. Keep your eyes on the planks and you\'ll be fine.',
+        verdict: 'unsafe',
+        outcome: {
+          title: 'Fall from 8 m',
+          happened:
+            'Halfway across, a gust caught you and your boot slipped off the plank edge. With nothing connected, you fell 8 metres to the ground.',
+          why: 'Balance doesn\'t protect you from a gust, a trip or a dizzy spell. A fall of 8 m reaches over 40 km/h before impact — very often fatal.',
+          rule: 'Each employee on a walking/working surface with an unprotected side or edge 6 ft (1.8 m) or more above a lower level must be protected by guardrails, safety nets or a personal fall arrest system.',
+          ruleRef: 'OSHA 1926.501(b)(1)',
+          takeaway: 'Never step onto an unprotected edge without being connected.',
+        },
+      },
+      {
+        id: 'twin',
+        label: 'Inspect harness, clip both hooks to the lifeline',
+        detail: 'Check webbing, D-ring and hooks, then cross with 100% tie-off — always at least one hook attached.',
+        verdict: 'correct',
+        outcome: {
+          title: '100% tie-off — protected all the way',
+          happened:
+            'You checked your harness and lanyard, clipped both hooks to the lifeline and leap-frogged them past each stanchion. You were connected for every step of the crossing.',
+          why: 'A personal fall arrest system only works if it\'s connected. Twin lanyards remove the gap that a single hook leaves each time you pass an anchor.',
+          rule: 'Personal fall arrest systems must be inspected before each use and anchored to points capable of supporting 5,000 lb (22.2 kN) per worker.',
+          ruleRef: 'OSHA 1926.502(d)(15), (d)(21)',
+          takeaway: 'Inspect, connect, then step out — and stay connected.',
+        },
+      },
+    ],
+  },
+  plank: {
+    id: 'plank',
+    tag: 'Plank',
+    title: 'The next plank isn\'t resting on its bearer',
+    situation:
+      'You\'ve stopped just before a gap in the walkway. The next plank has slid along: its near end hangs in mid-air, supported only by the bearer 2.5 m further on.',
+    cues: ['No cleats or clamps on the plank', 'Scaffold tag at the access is green — but was signed this morning', 'Your crew is waiting for you on the east bay'],
+    question: 'What do you do?',
+    options: [
+      {
+        id: 'quick',
+        label: 'Step across it quickly',
+        detail: 'Put your weight on it briefly and keep moving — it\'s only one plank.',
+        verdict: 'unsafe',
+        outcome: {
+          title: 'The plank tipped under you',
+          happened:
+            'The moment your weight landed on the unsupported end, the plank see-sawed and dropped. Your lanyard arrested the fall — leaving you hanging below the walkway, 6 m above the ground.',
+          why: 'An overhanging plank pivots on its last bearer. Speed doesn\'t help — your full weight arrives on the end before you can step off. Your harness saved you, but a suspended worker needs rescue within minutes.',
+          rule: 'Scaffold planks must extend over their supports by at least 6 in (15 cm) and be cleated or restrained if the overhang exceeds 12 in (30 cm).',
+          ruleRef: 'OSHA 1926.451(b)(4)–(5)',
+          takeaway: 'Never trust a plank you haven\'t seen sitting on both bearers.',
+        },
+      },
+      {
+        id: 'secure',
+        label: 'Stop, re-seat and clamp it, then report',
+        detail: 'Slide it back onto both bearers, fit the clamps, and tell the supervisor so the scaffold is re-inspected.',
+        verdict: 'correct',
+        outcome: {
+          title: 'Hazard fixed and reported',
+          happened:
+            'Still clipped in, you slid the plank back onto both bearers, fitted the clamps and radioed the supervisor to have the scaffold re-inspected before anyone else used it.',
+          why: 'Planks get knocked out of position by materials and people. A defect found after the morning inspection still has to be fixed and reported — the tag only shows the scaffold\'s condition when it was checked.',
+          rule: 'Scaffolds must be inspected by a competent person before each shift and after any occurrence that could affect their integrity; defects must be corrected before use.',
+          ruleRef: 'OSHA 1926.451(f)(3)',
+          takeaway: 'Spot it, stop, fix or isolate it, report it.',
+        },
+      },
+      {
+        id: 'beam',
+        label: 'Step onto the beam flange to get past',
+        detail: 'Bypass the plank by walking on the top of the steel beam beside it.',
+        verdict: 'unsafe',
+        outcome: {
+          title: 'Slipped off the beam flange',
+          happened:
+            'The flange was only 20 cm wide and dusty. Your boot slid off the edge and your lanyard arrested your fall — you\'re hanging beside the beam waiting for rescue.',
+          why: 'Detouring around a hazard onto an even narrower surface trades one fall risk for a worse one. The fix is to correct the walkway, not to improvise a route.',
+          rule: 'Walking/working surfaces must be safe for the work; employees must not use surfaces that aren\'t designed or approved as a walkway.',
+          ruleRef: 'OSHA 1926.451 · 1926.501',
+          takeaway: 'Don\'t work around a hazard — make it safe first.',
+        },
+      },
+    ],
+  },
+  coworker: {
+    id: 'coworker',
+    tag: 'Stop work',
+    title: 'Your coworker is unclipped at the edge',
+    situation:
+      'On the east bay, your coworker has unhooked both lanyards to reach a bolt on the edge column. He\'s leaning over the open edge with his back to you.',
+    cues: ['Both lanyard hooks are hanging loose at his back', 'No guardrail on this edge', 'He\'s concentrating — he hasn\'t seen you'],
+    question: 'What do you do?',
+    options: [
+      {
+        id: 'ignore',
+        label: 'Leave him — he\'s experienced',
+        detail: 'It\'s his decision and he\'s been doing this for years.',
+        verdict: 'unsafe',
+        outcome: {
+          title: 'A preventable fall',
+          happened:
+            'Seconds later the bolt freed suddenly and he lost his balance. With nothing connected and no guardrail, he fell from the edge.',
+          why: 'Experience doesn\'t stop gravity — most fatal falls involve experienced workers doing a "quick job". Everyone on site has the authority, and the duty, to stop unsafe work.',
+          rule: 'Employees exposed to falls of 6 ft (1.8 m) or more must be protected by a fall protection system at all times; supervisors and coworkers must act on hazards they see.',
+          ruleRef: 'OSHA 1926.501(b)(1) · 1926.21(b)(2)',
+          takeaway: 'See it, say it — Stop Work Authority belongs to everyone.',
+        },
+      },
+      {
+        id: 'grab',
+        label: 'Rush over and grab his harness',
+        detail: 'Get to him fast and pull him back from the edge yourself.',
+        verdict: 'risky',
+        outcome: {
+          title: 'Near miss — you startled him',
+          happened:
+            'He didn\'t hear you coming. When you grabbed him he jerked round, lost his footing and nearly took you both over the edge.',
+          why: 'Startling someone at an unprotected edge can trigger the fall you\'re trying to prevent — and puts you in the danger zone too.',
+          rule: 'Intervene from a safe position: get the worker\'s attention calmly, have them step back and reconnect. Don\'t enter the fall zone unprotected.',
+          ruleRef: 'OSHA 1926.501(b)(1) · Site Stop Work policy',
+          takeaway: 'Call out calmly from a safe distance — don\'t lunge.',
+        },
+      },
+      {
+        id: 'stop',
+        label: 'Call "Stop!" from a safe distance',
+        detail: 'Get his attention, have him step back from the edge and clip both hooks before carrying on.',
+        verdict: 'correct',
+        outcome: {
+          title: 'Stop Work Authority used well',
+          happened:
+            'You called out clearly from where you stood. He stopped, stepped back from the edge and clipped both hooks to the anchor before finishing the bolt.',
+          why: 'A clear call from a safe distance gets attention without startling. Making reconnection a condition of carrying on fixes the hazard at its source.',
+          rule: 'Every worker exposed to an unprotected edge 6 ft (1.8 m) or more above a lower level must be protected; anyone on site may stop work to correct an imminent danger.',
+          ruleRef: 'OSHA 1926.501(b)(1) · 1926.502(d)',
+          takeaway: 'Stop, step back, clip in — then carry on.',
+        },
+      },
+    ],
+  },
+  guardrail: {
+    id: 'guardrail',
+    tag: 'Edge',
+    title: 'This bay\'s outer edge has no guardrail',
+    situation:
+      'Your coworker is clipped in, but the edge itself is still open — only a few stub posts are left. Other trades will be moving materials onto this bay this afternoon.',
+    cues: ['No top rail, mid-rail or toe board', 'Guardrail components are stacked on the bay', 'A roll of caution tape is in your pouch'],
+    question: 'How do you deal with the open edge?',
+    options: [
+      {
+        id: 'tape',
+        label: 'String caution tape across it',
+        detail: 'Quick and visible — everyone will see it and keep away.',
+        verdict: 'risky',
+        outcome: {
+          title: 'Tape is a warning, not protection',
+          happened:
+            'The tape fluttered across the posts. A few minutes later a labourer carrying sheets backed into it — it stretched and tore without slowing him down. He stopped just short of the edge.',
+          why: 'Caution tape gives no physical resistance. Someone walking backwards, carrying material or tripping goes straight through it.',
+          rule: 'Guardrails need a top rail at 42 in (±3 in) that withstands 200 lb of force, a mid-rail, and toe boards where objects could fall.',
+          ruleRef: 'OSHA 1926.502(b)',
+          takeaway: 'Tape warns. Only a guardrail (or tie-off) protects.',
+        },
+      },
+      {
+        id: 'install',
+        label: 'Stop work here, install the guardrail, report',
+        detail: 'Fit top rail, mid-rail and toe board from the stacked components, and report the missing edge protection.',
+        verdict: 'correct',
+        outcome: {
+          title: 'Edge protected and reported',
+          happened:
+            'Working tied off, you and your coworker fitted the top rail, mid-rail and toe board, then reported the missing edge protection so the supervisor could find out why it had been removed.',
+          why: 'Collective protection like guardrails protects everyone — including people who don\'t know the edge is there. Reporting makes sure it doesn\'t go missing again.',
+          rule: 'Top rail 42 in (1.07 m) ±3 in, withstanding 200 lb; mid-rail about halfway; toe boards at least 3.5 in high where objects can fall to lower levels.',
+          ruleRef: 'OSHA 1926.502(b)(1)–(3), (j)',
+          takeaway: 'Restore the guardrail before work continues — and report the gap.',
+        },
+      },
+      {
+        id: 'avoid',
+        label: 'Just keep away from it yourself',
+        detail: 'You know it\'s there — stay on the inside of the bay.',
+        verdict: 'unsafe',
+        outcome: {
+          title: 'Hazard left for others',
+          happened:
+            'You stayed clear — but the next crew up the ladder didn\'t know the edge was open, and one of them backed towards it while unloading.',
+          why: 'Avoiding a hazard yourself does nothing for the people who arrive after you. Unreported edges are a common factor in falls by other trades.',
+          rule: 'Open sides and edges 6 ft (1.8 m) or more above a lower level must be protected by guardrails, safety nets or personal fall arrest systems.',
+          ruleRef: 'OSHA 1926.501(b)(1)',
+          takeaway: 'If you find it, you own it until it\'s fixed or handed over.',
+        },
+      },
+    ],
+  },
+}
 
-function HighAltitudeSkyscraperScene({
-  plankTipped,
-  isTiedOff,
-  guardrailRepaired,
-}: {
-  plankTipped: boolean
-  isTiedOff: boolean
-  guardrailRepaired: boolean
-}) {
-  // PBR Materials
-  const orangeSteelMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#d97706',
-        metalness: 0.6,
-        roughness: 0.35,
-      }),
-    []
-  )
-  const greySteelMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#475569',
-        metalness: 0.8,
-        roughness: 0.25,
-      }),
-    []
-  )
-  const woodPlankMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#b45309',
-        roughness: 0.85,
-      }),
-    []
-  )
-  const concreteMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#64748b',
-        roughness: 0.9,
-      }),
-    []
-  )
-  const yellowRailMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#eab308',
-        metalness: 0.5,
-        roughness: 0.3,
-      }),
-    []
-  )
+// ─── Geometry ────────────────────────────────────────────────────────────────
 
+function buildFrame() {
+  const steel: BoxItem[] = []
+  const PRIMER = '#9a3d12'
+  const xs = [-12, -6, 0, 6, 12]
+  const zs = [-3, 3]
+  for (const x of xs) for (const z of zs) steel.push({ p: [x, (LEVEL + 3.5) / 2, z], s: [0.32, LEVEL + 3.5, 0.32], c: PRIMER })
+  // Beams at the lower floor and working level
+  for (const y of [4, LEVEL - 0.25]) {
+    for (const z of zs) steel.push({ p: [0, y, z], s: [24.3, 0.45, 0.22], c: PRIMER })
+    for (const x of xs) steel.push({ p: [x, y, 0], s: [0.22, 0.45, 6.3], c: PRIMER })
+  }
+  // Walkway beam (top flange at LEVEL - 0.05)
+  steel.push({ p: [0, LEVEL - 0.3, 0], s: [12, 0.5, 0.2], c: PRIMER })
+  steel.push({ p: [0, LEVEL - 0.07, 0], s: [12, 0.04, 0.22], c: '#7c2d12' })
+  // Upper-level beams (frame continues upwards)
+  for (const z of zs) steel.push({ p: [0, LEVEL + 3.3, z], s: [24.3, 0.4, 0.2], c: PRIMER })
+
+  // Decks: west & east bays (metal deck + concrete topping)
+  const deck: BoxItem[] = [
+    { p: [-9, LEVEL - 0.08, 0], s: [6.2, 0.16, 6.2], c: '#a3a39e' },
+    { p: [9, LEVEL - 0.08, 0], s: [6.2, 0.16, 6.2], c: '#a3a39e' },
+    { p: [-9, LEVEL - 0.22, 0], s: [6.2, 0.12, 6.2], c: '#6b7280' },
+    { p: [9, LEVEL - 0.22, 0], s: [6.2, 0.12, 6.2], c: '#6b7280' },
+    // Lower floor (partially decked) to sell the height
+    { p: [-9, 3.9, 0], s: [6.2, 0.14, 6.2], c: '#9b9b96' },
+    { p: [9, 3.9, 0], s: [6.2, 0.14, 6.2], c: '#9b9b96' },
+  ]
+
+  // Guardrails on decked bays (except the east edge and the walkway gaps)
+  const rail: Segment[] = []
+  const posts: BoxItem[] = []
+  const railRun = (ax: number, az: number, bx: number, bz: number) => {
+    for (const y of [1.07, 0.53]) rail.push([ax, LEVEL + y, az, bx, LEVEL + y, bz])
+    const n = Math.max(1, Math.round(Math.hypot(bx - ax, bz - az) / 1.8))
+    for (let i = 0; i <= n; i++) {
+      const t = i / n
+      posts.push({ p: [ax + (bx - ax) * t, LEVEL + 0.55, az + (bz - az) * t], s: [0.06, 1.1, 0.06], c: '#facc15' })
+    }
+    posts.push({ p: [(ax + bx) / 2, LEVEL + 0.06, (az + bz) / 2], s: [Math.abs(bx - ax) + 0.04, 0.12, Math.abs(bz - az) + 0.04], c: '#d97706' })
+  }
+  railRun(-12, -3.05, -6, -3.05)
+  railRun(-12, 3.05, -6, 3.05)
+  railRun(-12.05, -3, -12.05, 3)
+  railRun(-6.05, -3, -6.05, -0.45)
+  railRun(-6.05, 0.45, -6.05, 3)
+  railRun(6, -3.05, 12, -3.05)
+  railRun(6, 3.05, 12, 3.05)
+  railRun(6.05, -3, 6.05, -0.45)
+  railRun(6.05, 0.45, 6.05, 3)
+  // Stub posts on the open east edge
+  for (const z of [-2.6, 0.2, 2.6]) posts.push({ p: [EDGE_X + 0.05, LEVEL + 0.2, z], s: [0.06, 0.4, 0.06], c: '#facc15' })
+
+  // Scaffold walkway: bearers and fixed planks (the loose plank is separate)
+  const planks: BoxItem[] = []
+  for (const [x0, x1] of [
+    [-6, -3],
+    [-3, 0.02],
+    [3.0, 6],
+  ]) {
+    for (const z of [-0.15, 0.15]) planks.push({ p: [(x0 + x1) / 2, LEVEL + 0.02, z], s: [x1 - x0 - 0.02, 0.05, 0.28], c: '#b7884f' })
+  }
+  const bearers: Segment[] = []
+  for (const x of [-6, -3, 0, 3, 6]) bearers.push([x, LEVEL - 0.03, -0.4, x, LEVEL - 0.03, 0.4])
+
+  // Lifeline stanchions
+  const stanchions: Segment[] = []
+  for (const x of [-6, 0, 6]) stanchions.push([x, LEVEL - 0.05, 0.36, x, LIFELINE_Y + 0.05, 0.36])
+
+  return { steel, deck, rail, posts, planks, bearers, stanchions }
+}
+
+function buildSite() {
+  const boxes: BoxItem[] = []
+  const r = (() => {
+    let s = 9
+    return () => {
+      s = (s * 16807) % 2147483647
+      return (s - 1) / 2147483646
+    }
+  })()
+  // Steel stock, pallets, site cabins on the ground
+  for (let i = 0; i < 6; i++) boxes.push({ p: [-4 + i * 0.35, 0.2 + (i % 2) * 0.25, 9], s: [8, 0.22, 0.25], c: '#9a3d12' })
+  for (let i = 0; i < 5; i++) boxes.push({ p: [3 + i * 1.4, 0.4, -9], s: [1.2, 0.8, 1.0], c: i % 2 ? '#b98a55' : '#c9c3b8' })
+  boxes.push({ p: [-18, 1.3, 8], s: [6, 2.6, 2.4], c: '#e2e8f0' })
+  boxes.push({ p: [-18, 3.9, 8], s: [6, 2.6, 2.4], c: '#e2e8f0' })
+  boxes.push({ p: [-17, 1.2, -10], s: [1.2, 2.4, 1.2], c: '#16a34a' })
+  boxes.push({ p: [18, 1.6, 10], s: [3, 3.2, 2.5], c: '#334155' })
+  // Distant city massing
+  const city: BoxItem[] = []
+  for (let i = 0; i < 26; i++) {
+    const a = (i / 26) * Math.PI * 2 + r() * 0.15
+    const d = 70 + r() * 40
+    const h = 8 + r() * 34
+    city.push({ p: [Math.cos(a) * d, h / 2, Math.sin(a) * d], s: [10 + r() * 10, h, 10 + r() * 10], c: ['#b8c0c8', '#9aa4ae', '#c9cdd2', '#8e98a3'][i % 4], ry: r() })
+  }
+  return { boxes, city }
+}
+
+const FRAME = buildFrame()
+const SITE = buildSite()
+
+// ─── Scene pieces ────────────────────────────────────────────────────────────
+
+function SiteGround() {
+  const dirt = useMemo(() => dirtTexture([30, 30]), [])
+  const slab = useMemo(() => concreteTexture([3, 3], '#9a9b98'), [])
+  const windows = useMemo(() => windowsTexture([3, 6]), [])
   return (
     <group>
-      {/* ── Distant City Below (50 Meters Vertigo Drop) ── */}
-      <group position={[0, -50, 0]}>
-        {/* City Floor Grid */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-          <planeGeometry args={[400, 400]} />
-          <meshStandardMaterial color="#0f172a" roughness={0.9} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[400, 400]} />
+        <meshStandardMaterial map={dirt} roughness={1} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]} receiveShadow>
+        <planeGeometry args={[26, 8]} />
+        <meshStandardMaterial map={slab} roughness={0.9} />
+      </mesh>
+      <Boxes items={SITE.boxes} roughness={0.8} />
+      <CityBlocks />
+      {/* A couple of glazed towers nearby */}
+      {[
+        [-34, 18, -40, 14, 36, 14],
+        [40, 14, -30, 16, 28, 12],
+        [30, 12, 44, 12, 24, 12],
+      ].map(([x, y, z, sx, sy, sz], i) => (
+        <mesh key={i} position={[x, y, z]}>
+          <boxGeometry args={[sx, sy, sz]} />
+          <meshStandardMaterial map={windows} roughness={0.4} metalness={0.3} />
         </mesh>
-        {/* Surrounding Low-Rise & High-Rise Towers below */}
-        {[-80, -40, 0, 40, 80].map((bx, i) =>
-          [-60, 60].map((bz, zi) => (
-            <group key={`bldg-${i}-${zi}`} position={[bx + zi * 10, 15, bz]}>
-              <mesh castShadow receiveShadow>
-                <boxGeometry args={[26, 30 + (i % 3) * 10, 26]} />
-                <meshStandardMaterial color={i % 2 === 0 ? '#1e293b' : '#334155'} roughness={0.7} />
-              </mesh>
-              {/* Roof HVAC units */}
-              <mesh position={[0, 16 + (i % 3) * 5, 0]}>
-                <boxGeometry args={[8, 3, 8]} />
-                <meshStandardMaterial color="#475569" />
-              </mesh>
-            </group>
-          ))
-        )}
-      </group>
-
-      {/* ── Towering Structural Columns (Continuous steel pillars from -50m to +15m) ── */}
-      {[-8, 0, 8].map((x, xi) =>
-        [-4, 4].map((z, zi) => (
-          <group key={`column-rig-${xi}-${zi}`} position={[x, -18, z]}>
-            <mesh material={orangeSteelMat} castShadow receiveShadow>
-              <boxGeometry args={[0.7, 68, 0.7]} />
-            </mesh>
-            {/* Structural Rivet Flange Plates */}
-            {[-10, 0, 10, 18].map((fy, fyi) => (
-              <mesh key={`flange-${fyi}`} position={[0, fy, 0]} material={greySteelMat}>
-                <boxGeometry args={[0.95, 0.4, 0.95]} />
-              </mesh>
-            ))}
-          </group>
-        ))
-      )}
-
-      {/* ── Starting Safe Concrete Deck (West: X = -12 to -6, Y = 0) ── */}
-      <group position={[-9, -0.2, 0]}>
-        {/* Concrete Slab Deck with Rebar Edges */}
-        <mesh receiveShadow material={concreteMat}>
-          <boxGeometry args={[6.5, 0.4, 6.5]} />
-        </mesh>
-        {/* Corrugated Metal Pan underneath slab */}
-        <mesh position={[0, -0.25, 0]} material={greySteelMat}>
-          <boxGeometry args={[6.5, 0.1, 6.5]} />
-        </mesh>
-        {/* Three-Sided Safety Perimeter Guardrails */}
-        <mesh position={[0, 1.07, 3.2]} material={yellowRailMat}>
-          <boxGeometry args={[6.5, 0.08, 0.08]} />
-        </mesh>
-        <mesh position={[0, 0.53, 3.2]} material={yellowRailMat}>
-          <boxGeometry args={[6.5, 0.08, 0.08]} />
-        </mesh>
-        <mesh position={[0, 1.07, -3.2]} material={yellowRailMat}>
-          <boxGeometry args={[6.5, 0.08, 0.08]} />
-        </mesh>
-        <mesh position={[0, 0.53, -3.2]} material={yellowRailMat}>
-          <boxGeometry args={[6.5, 0.08, 0.08]} />
-        </mesh>
-        <mesh position={[-3.2, 1.07, 0]} material={yellowRailMat}>
-          <boxGeometry args={[0.08, 0.08, 6.5]} />
-        </mesh>
-        <mesh position={[-3.2, 0.53, 0]} material={yellowRailMat}>
-          <boxGeometry args={[0.08, 0.08, 6.5]} />
-        </mesh>
-      </group>
-
-      {/* ── The Elevated Narrow Steel Girder Bridge (X = -6 to +6, Y = 0, Width = 0.5m) ── */}
-      <group position={[0, 0, 0]}>
-        {/* Main Walking Flange (Top) */}
-        <mesh position={[0, -0.05, 0]} material={orangeSteelMat} receiveShadow castShadow>
-          <boxGeometry args={[14, 0.1, 0.55]} />
-        </mesh>
-        {/* Girder Vertical Web */}
-        <mesh position={[0, -0.45, 0]} material={orangeSteelMat}>
-          <boxGeometry args={[14, 0.7, 0.12]} />
-        </mesh>
-        {/* Girder Bottom Flange */}
-        <mesh position={[0, -0.85, 0]} material={orangeSteelMat}>
-          <boxGeometry args={[14, 0.1, 0.55]} />
-        </mesh>
-        {/* Cross Bracing Tension Rods */}
-        {[-4, 0, 4].map((bx, bi) => (
-          <group key={`brace-${bi}`} position={[bx, -1.2, 0]}>
-            <mesh rotation={[0, 0, Math.PI / 4]} material={greySteelMat}>
-              <cylinderGeometry args={[0.02, 0.02, 2.8, 8]} />
-            </mesh>
-            <mesh rotation={[0, 0, -Math.PI / 4]} material={greySteelMat}>
-              <cylinderGeometry args={[0.02, 0.02, 2.8, 8]} />
-            </mesh>
-          </group>
-        ))}
-
-        {/* Overhead Yellow Static Lifeline Cable (Rated 5,000 lbs ANSI Z359) */}
-        <group position={[0, 2.1, 0]}>
-          <mesh rotation={[0, 0, Math.PI / 2]}>
-            <cylinderGeometry args={[0.018, 0.018, 14, 8]} />
-            <meshStandardMaterial color="#facc15" metalness={0.9} roughness={0.2} />
-          </mesh>
-          {/* Lifeline Stanchion Posts */}
-          {[-6, 0, 6].map((sx, si) => (
-            <mesh key={`stanchion-${si}`} position={[sx, -1.0, 0]} material={orangeSteelMat}>
-              <cylinderGeometry args={[0.04, 0.04, 2.1, 8]} />
-            </mesh>
-          ))}
-        </group>
-
-        {/* 100% Dual-Lanyard Snap Hook Slider (Visible when connected) */}
-        {isTiedOff && (
-          <group position={[-1, 1.4, 0]}>
-            <mesh>
-              <cylinderGeometry args={[0.015, 0.015, 1.4, 8]} />
-              <meshStandardMaterial color="#3b82f6" metalness={0.7} />
-            </mesh>
-            {/* Sliding Carabiner */}
-            <mesh position={[0, 0.7, 0]}>
-              <torusGeometry args={[0.05, 0.015, 8, 16]} />
-              <meshStandardMaterial color="#e2e8f0" metalness={0.9} />
-            </mesh>
-          </group>
-        )}
-      </group>
-
-      {/* ── HAZARD: Loose Cantilever Scaffold Board at X = 2.4, Y = 0.06, Z = 0 ── */}
-      <group
-        position={[2.4, 0.06, 0]}
-        rotation={plankTipped ? [0.45, 0, -0.65] : [0, 0, 0]}
-      >
-        <mesh castShadow receiveShadow material={woodPlankMat}>
-          <boxGeometry args={[2.8, 0.08, 0.58]} />
-        </mesh>
-        {/* Warning Hazard Stripes on Wood Board */}
-        <mesh position={[0, 0.045, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[2.6, 0.2]} />
-          <meshStandardMaterial color="#facc15" />
-        </mesh>
-      </group>
-
-      {/* ── Destination Landing Platform (East: X = +6 to +12, Y = 0) ── */}
-      <group position={[9, -0.2, 0]}>
-        <mesh receiveShadow material={concreteMat}>
-          <boxGeometry args={[6.5, 0.4, 6.5]} />
-        </mesh>
-
-        {/* East Perimeter Guardrail (Repaired vs Open Gap Hazard) */}
-        {guardrailRepaired ? (
-          <group position={[3.2, 0, 0]}>
-            <mesh position={[0, 1.07, 0]} material={yellowRailMat}>
-              <boxGeometry args={[0.08, 0.08, 6.5]} />
-            </mesh>
-            <mesh position={[0, 0.53, 0]} material={yellowRailMat}>
-              <boxGeometry args={[0.08, 0.08, 6.5]} />
-            </mesh>
-            <mesh position={[0, 0.1, 0]}>
-              <boxGeometry args={[0.08, 0.2, 6.5]} />
-              <meshStandardMaterial color="#b45309" />
-            </mesh>
-          </group>
-        ) : (
-          /* Open Unguarded Edge with Red Hazard Glow Line */
-          <group position={[3.2, 0, 0]}>
-            <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-              <planeGeometry args={[0.6, 6.5]} />
-              <meshStandardMaterial color="#ef4444" transparent opacity={0.65} />
-            </mesh>
-          </group>
-        )}
-      </group>
-
-      {/* ── Giant Tower Crane in Background ── */}
-      <group position={[18, 10, -22]}>
-        {/* Yellow Lattice Tower Mast */}
-        <mesh position={[0, 10, 0]}>
-          <boxGeometry args={[2.2, 44, 2.2]} />
-          <meshStandardMaterial color="#f59e0b" metalness={0.7} roughness={0.3} />
-        </mesh>
-        {/* Horizontal Jib Arm */}
-        <mesh position={[-14, 32, 0]}>
-          <boxGeometry args={[42, 1.6, 1.6]} />
-          <meshStandardMaterial color="#f59e0b" metalness={0.7} />
-        </mesh>
-        {/* Counter Jib & Heavy Concrete Weights */}
-        <mesh position={[12, 32, 0]}>
-          <boxGeometry args={[16, 1.6, 1.6]} />
-          <meshStandardMaterial color="#f59e0b" />
-        </mesh>
-        <mesh position={[16, 31, 0]}>
-          <boxGeometry args={[4, 2.5, 3]} />
-          <meshStandardMaterial color="#334155" />
-        </mesh>
+      ))}
+      <group position={[-14, 0, -22]} rotation={[0, 0.9, 0]}>
+        <TowerCrane />
       </group>
     </group>
   )
 }
 
-// ─── 3D Coworker Model at Edge ────────────────────────────────────────────────
-
-function CoworkerModelAtEdge({ isWarned }: { isWarned: boolean }) {
+function CityBlocks() {
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const map = useMemo(() => windowsTexture([4, 8]), [])
+  useEffect(() => {
+    const m = ref.current
+    if (!m) return
+    const mat = new THREE.Matrix4()
+    const q = new THREE.Quaternion()
+    const col = new THREE.Color()
+    SITE.city.forEach((b, i) => {
+      q.setFromAxisAngle(UP, b.ry ?? 0)
+      m.setMatrixAt(i, mat.compose(new THREE.Vector3(...b.p), q, new THREE.Vector3(...b.s)))
+      m.setColorAt(i, col.set(b.c))
+    })
+    m.instanceMatrix.needsUpdate = true
+    if (m.instanceColor) m.instanceColor.needsUpdate = true
+    m.computeBoundingSphere()
+  }, [])
   return (
-    <group position={[8.0, 0, -1.2]} rotation={[0, isWarned ? -Math.PI / 2 : Math.PI / 3, 0]}>
-      {/* Torso & Orange High Vis Vest */}
-      <mesh position={[0, 1.25, 0]}>
-        <boxGeometry args={[0.48, 0.75, 0.28]} />
-        <meshStandardMaterial color="#f97316" roughness={0.5} />
-      </mesh>
-      {/* Reflective Stripes */}
-      <mesh position={[0, 1.35, 0.145]}>
-        <planeGeometry args={[0.44, 0.08]} />
-        <meshStandardMaterial color="#f8fafc" metalness={0.8} />
-      </mesh>
-      {/* Head & Hard Hat */}
-      <mesh position={[0, 1.85, 0]}>
-        <sphereGeometry args={[0.16, 16, 16]} />
-        <meshStandardMaterial color="#fcd34d" />
-      </mesh>
-      <mesh position={[0, 1.95, 0]}>
-        <cylinderGeometry args={[0.22, 0.2, 0.14, 16]} />
-        <meshStandardMaterial color="#ffffff" />
-      </mesh>
-      {/* Legs */}
-      <mesh position={[-0.15, 0.45, 0]}>
-        <cylinderGeometry args={[0.1, 0.1, 0.9, 8]} />
-        <meshStandardMaterial color="#1e3a8a" />
-      </mesh>
-      <mesh position={[0.15, 0.45, 0]}>
-        <cylinderGeometry args={[0.1, 0.1, 0.9, 8]} />
-        <meshStandardMaterial color="#1e3a8a" />
-      </mesh>
+    <instancedMesh ref={ref} args={[undefined, undefined, SITE.city.length]}>
+      <boxGeometry />
+      <meshStandardMaterial map={map} roughness={0.6} metalness={0.2} />
+    </instancedMesh>
+  )
+}
 
-      {/* Floating Status Callout */}
-      <Html position={[0, 2.6, 0]} center distanceFactor={12}>
-        <div
-          style={{
-            background: isWarned ? 'rgba(22, 101, 52, 0.95)' : 'rgba(185, 28, 28, 0.95)',
-            color: '#fff',
-            padding: '4px 10px',
-            borderRadius: 8,
-            fontSize: 11,
-            fontWeight: 800,
-            whiteSpace: 'nowrap',
-            border: `1px solid ${isWarned ? '#4ade80' : '#f87171'}`,
-            boxShadow: '0 4px 15px rgba(0,0,0,0.5)',
-          }}
-        >
-          {isWarned ? '✓ Coworker Clipped & Safe' : '⚠️ UNCLIPPED COWORKER AT 50m!'}
-        </div>
-      </Html>
+function SteelFrame() {
+  const deckTex = useMemo(() => concreteTexture([2, 2], '#a8a8a3'), [])
+  const stripes = useMemo(() => hazardStripeTexture([8, 1]), [])
+  return (
+    <group>
+      <Boxes items={FRAME.steel} roughness={0.55} />
+      <Boxes items={FRAME.deck.slice(2)} roughness={0.85} />
+      {FRAME.deck.slice(0, 2).map((d, i) => (
+        <mesh key={i} position={d.p} receiveShadow castShadow>
+          <boxGeometry args={d.s} />
+          <meshStandardMaterial map={deckTex} roughness={0.85} />
+        </mesh>
+      ))}
+      <Tubes segments={FRAME.rail} radius={0.025} color="#facc15" roughness={0.45} />
+      <Boxes items={FRAME.posts} roughness={0.5} />
+      <Boxes items={FRAME.planks} roughness={0.9} />
+      <Tubes segments={FRAME.bearers} radius={0.024} color="#9ca3af" metalness={0.6} roughness={0.35} />
+      <Tubes segments={FRAME.stanchions} radius={0.035} color="#1f2937" metalness={0.5} roughness={0.4} />
+      {/* Lifeline */}
+      <Tubes segments={[[-6, LIFELINE_Y, 0.36, 6, LIFELINE_Y, 0.36]]} radius={0.008} color="#e5e7eb" metalness={0.9} roughness={0.2} />
+      {/* Open-edge warning stripe on the east bay */}
+      <mesh position={[EDGE_X - 0.15, LEVEL + 0.005, 0]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
+        <planeGeometry args={[6, 0.25]} />
+        <meshStandardMaterial map={stripes} roughness={0.6} polygonOffset polygonOffsetFactor={-2} />
+      </mesh>
+      {/* Anchor sling on the edge column */}
+      <mesh position={[EDGE_X - 0.18, LEVEL + 2.1, 2.85]} rotation={[0, 0, Math.PI / 2]}>
+        <torusGeometry args={[0.07, 0.02, 8, 16]} />
+        <meshStandardMaterial color="#facc15" roughness={0.5} />
+      </mesh>
+      {/* Stacked guardrail components on the east bay */}
+      <Boxes
+        items={[
+          { p: [8.2, LEVEL + 0.08, -2.2], s: [2.4, 0.08, 0.5], c: '#facc15' },
+          { p: [8.2, LEVEL + 0.16, -2.2], s: [2.4, 0.08, 0.5], c: '#facc15' },
+          { p: [8.2, LEVEL + 0.24, -2.2], s: [2.4, 0.08, 0.5], c: '#d97706' },
+        ]}
+      />
     </group>
   )
 }
 
-// ─── First-Person Camera Rig with Free Fall Plunge Physics ────────────────────
-
-function FirstPersonFallingCameraRig({
-  position,
-  yaw,
-  pitch,
-  isFalling,
-  fallY,
-  fallRoll,
-}: {
-  position: [number, number, number]
-  yaw: number
-  pitch: number
-  isFalling: boolean
-  fallY: number
-  fallRoll: number
-}) {
-  const { camera } = useThree()
-
-  useFrame(() => {
-    if (isFalling) {
-      // Free fall downward plunge with tumbling pitch & roll
-      camera.position.set(position[0], fallY, position[2])
-      const euler = new THREE.Euler(pitch + Math.PI * 0.4, yaw, fallRoll, 'YXZ')
-      camera.quaternion.setFromEuler(euler)
+/** The plank that has slid off its west bearer; tips or gets re-seated. */
+function LoosePlank({ stateRef }: { stateRef: React.RefObject<{ mode: 'loose' | 'tipped' | 'secured'; t: number }> }) {
+  const ref = useRef<THREE.Group>(null)
+  useFrame((_, dt) => {
+    const g = ref.current
+    if (!g) return
+    const s = stateRef.current
+    s.t += Math.min(dt, 0.05)
+    if (s.mode === 'tipped') {
+      // Pivot about the east bearer (x = 3): near end drops
+      const u = Math.min(1, s.t / 0.35)
+      g.rotation.z = THREE.MathUtils.lerp(0, 0.9, u * u)
+      g.position.x = PLANK_LOOSE.x1 - 0.35
+    } else if (s.mode === 'secured') {
+      const u = Math.min(1, s.t / 1.2)
+      g.rotation.z = 0
+      g.position.x = THREE.MathUtils.lerp(PLANK_LOOSE.x1 - 0.35, 3.0, u)
     } else {
-      // Standard eye level 1.7m above beam
-      camera.position.set(position[0], 1.7, position[2])
-      const euler = new THREE.Euler(pitch, yaw, 0, 'YXZ')
-      camera.quaternion.setFromEuler(euler)
+      g.rotation.z = 0
+      g.position.x = PLANK_LOOSE.x1 - 0.35
     }
   })
-
-  return null
+  const len = PLANK_LOOSE.x1 - PLANK_LOOSE.x0
+  return (
+    // Group origin sits on the east bearer; plank extends towards -X
+    <group ref={ref} position={[PLANK_LOOSE.x1 - 0.35, LEVEL + 0.02, 0]}>
+      {[-0.15, 0.15].map((z) => (
+        <mesh key={z} position={[-len / 2 + 0.35, 0, z]} castShadow receiveShadow>
+          <boxGeometry args={[len, 0.05, 0.28]} />
+          <meshStandardMaterial color="#b07d45" roughness={0.9} />
+        </mesh>
+      ))}
+    </group>
+  )
 }
 
-// ─── Main Construction Fall Scene Component ───────────────────────────────────
+function Clamps({ visible }: { visible: boolean }) {
+  if (!visible) return null
+  return (
+    <group>
+      {[0.05, 2.95].map((x) => (
+        <mesh key={x} position={[x, LEVEL + 0.03, 0]}>
+          <boxGeometry args={[0.12, 0.1, 0.66]} />
+          <meshStandardMaterial color="#64748b" metalness={0.7} roughness={0.35} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+/** Guardrail that rises into place on the open east edge. */
+function EastGuardrail({ installed }: { installed: boolean }) {
+  const ref = useRef<THREE.Group>(null)
+  const k = useRef(0)
+  useFrame((_, dt) => {
+    k.current += ((installed ? 1 : 0) - k.current) * (1 - Math.exp(-3 * Math.min(dt, 0.05)))
+    if (ref.current) {
+      ref.current.scale.y = Math.max(0.001, k.current)
+      ref.current.visible = k.current > 0.01
+    }
+  })
+  return (
+    <group ref={ref} position={[EDGE_X + 0.05, LEVEL, 0]}>
+      {[-3, -1.5, 0, 1.5, 3].map((z) => (
+        <mesh key={z} position={[0, 0.55, z]}>
+          <boxGeometry args={[0.06, 1.1, 0.06]} />
+          <meshStandardMaterial color="#facc15" roughness={0.5} />
+        </mesh>
+      ))}
+      {[1.07, 0.53].map((y) => (
+        <mesh key={y} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.025, 0.025, 6, 8]} />
+          <meshStandardMaterial color="#facc15" roughness={0.45} />
+        </mesh>
+      ))}
+      <mesh position={[0, 0.06, 0]}>
+        <boxGeometry args={[0.04, 0.12, 6]} />
+        <meshStandardMaterial color="#d97706" roughness={0.6} />
+      </mesh>
+    </group>
+  )
+}
+
+function CautionTape({ visible }: { visible: boolean }) {
+  const ref = useRef<THREE.Mesh>(null)
+  const stripes = useMemo(() => hazardStripeTexture([12, 1]), [])
+  useFrame(({ clock }) => {
+    if (ref.current) ref.current.rotation.z = Math.sin(clock.elapsedTime * 6) * 0.08
+  })
+  if (!visible) return null
+  return (
+    <mesh ref={ref} position={[EDGE_X + 0.07, LEVEL + 0.95, 0]} rotation={[0, Math.PI / 2, 0]}>
+      <planeGeometry args={[5.4, 0.08]} />
+      <meshStandardMaterial map={stripes} side={THREE.DoubleSide} roughness={0.6} />
+    </mesh>
+  )
+}
+
+/** Lanyard from the trainee's back D-ring up to the lifeline. */
+function PlayerLanyard({ playerRef, connected }: { playerRef: React.RefObject<PlayerState>; connected: boolean }) {
+  const ref = useRef<THREE.Mesh>(null)
+  const a = useMemo(() => new THREE.Vector3(), [])
+  const b = useMemo(() => new THREE.Vector3(), [])
+  const up = useMemo(() => new THREE.Vector3(0, 1, 0), [])
+  useFrame(() => {
+    const m = ref.current
+    if (!m) return
+    const p = playerRef.current
+    const onWalk = p.pos.x > -6.6 && p.pos.x < 6.6
+    m.visible = connected && onWalk
+    if (!m.visible) return
+    // D-ring sits behind the shoulders
+    const back = 0.25
+    a.set(p.pos.x + Math.sin(p.yaw) * back, p.pos.y + p.eye - 0.25, p.pos.z + Math.cos(p.yaw) * back)
+    b.set(THREE.MathUtils.clamp(p.pos.x + 0.2, -6, 6), LIFELINE_Y, 0.36)
+    const dir = b.clone().sub(a)
+    const len = dir.length()
+    m.position.copy(a).addScaledVector(dir, 0.5)
+    m.quaternion.setFromUnitVectors(up, dir.normalize())
+    m.scale.set(1, len, 1)
+  })
+  return (
+    <mesh ref={ref} visible={false}>
+      <cylinderGeometry args={[0.012, 0.012, 1, 6]} />
+      <meshStandardMaterial color="#f97316" roughness={0.6} />
+    </mesh>
+  )
+}
+
+const ANCHOR = new THREE.Vector3(EDGE_X - 0.18, LEVEL + 2.1, 2.85)
+const UP = new THREE.Vector3(0, 1, 0)
+const tmpA = new THREE.Vector3()
+const tmpB = new THREE.Vector3()
+
+/** Coworker at the edge; steps back and connects when told. */
+function Coworker({ mode }: { mode: 'unclipped' | 'safe' | 'startled' | 'falling' }) {
+  const ref = useRef<THREE.Group>(null)
+  const t = useRef(0)
+  const lanyard = useRef<THREE.Mesh>(null)
+  const [arrivedFor, setArrivedFor] = useState<string | null>(null)
+  const arrived = arrivedFor === mode
+  useEffect(() => {
+    t.current = 0
+  }, [mode])
+  useFrame((_, dt) => {
+    const g = ref.current
+    if (!g) return
+    t.current += Math.min(dt, 0.05)
+    const u = t.current
+    g.visible = true
+    if (mode === 'safe') {
+      const k = Math.min(1, u / 1.4)
+      if (k >= 1 && !arrived) setArrivedFor(mode)
+      g.position.set(THREE.MathUtils.lerp(COWORKER_POS.x, COWORKER_POS.x - 1.2, k), LEVEL, COWORKER_POS.z)
+      g.rotation.set(0, THREE.MathUtils.lerp(Math.PI / 2, -Math.PI / 2, k), 0)
+    } else if (mode === 'startled') {
+      g.position.set(COWORKER_POS.x + Math.sin(u * 14) * 0.05 * Math.max(0, 1 - u), LEVEL, COWORKER_POS.z)
+      g.rotation.set(0, Math.PI / 2 - Math.min(1, u * 3) * 2.4, Math.sin(u * 10) * 0.25 * Math.max(0, 1 - u / 1.5))
+    } else if (mode === 'falling') {
+      const fall = Math.max(0, u - 0.4)
+      g.position.set(COWORKER_POS.x + Math.min(u, 0.4) * 2 + fall * 1.2, LEVEL - 0.5 * 9.81 * fall * fall, COWORKER_POS.z)
+      g.rotation.set(0, Math.PI / 2, -Math.min(1.4, u * 1.6))
+      g.visible = g.position.y > 0.2
+    } else {
+      g.position.copy(COWORKER_POS)
+      g.rotation.set(0, Math.PI / 2, 0.08)
+    }
+    const l = lanyard.current
+    if (l) {
+      l.visible = mode === 'safe' && u > 1.4
+      if (l.visible) {
+        tmpA.set(g.position.x + 0.15, LEVEL + 1.15, g.position.z)
+        tmpB.copy(ANCHOR)
+        const dir = tmpB.sub(tmpA)
+        const len = dir.length()
+        l.position.copy(tmpA).addScaledVector(dir, 0.5)
+        l.quaternion.setFromUnitVectors(UP, dir.normalize())
+        l.scale.set(1, len, 1)
+      }
+    }
+  })
+  return (
+    <>
+      <AnimatedWorker ref={ref} clip={mode === 'safe' && !arrived ? 'Walk' : 'Interact'} position={COWORKER_POS.toArray() as [number, number, number]} rotation={Math.PI / 2}>
+        {/* Loose lanyard hooks hanging from his back */}
+        {mode !== 'safe' && (
+          <mesh position={[0, 0.9, -0.2]} rotation={[0.25, 0, 0]}>
+            <cylinderGeometry args={[0.012, 0.012, 0.8, 6]} />
+            <meshStandardMaterial color="#f97316" />
+          </mesh>
+        )}
+      </AnimatedWorker>
+      {/* Connected lanyard once safe: from his back to the column anchor */}
+      <mesh ref={lanyard} visible={false}>
+        <cylinderGeometry args={[0.012, 0.012, 1, 6]} />
+        <meshStandardMaterial color="#f97316" />
+      </mesh>
+    </>
+  )
+}
+
+// ─── Drill controller ────────────────────────────────────────────────────────
+
+type Stage = 'briefing' | 'walk' | 'hazard' | 'decide' | 'playout' | 'explain' | 'debrief'
 
 interface Props {
   scenario: Scenario
 }
 
+const STOPS: Record<StepId, number> = { tieoff: -6.55, plank: -0.15, coworker: 7.6, guardrail: 7.6 }
+
 export function ConstructionFallSceneView({ scenario }: Props) {
   const setPhase = useSimulationStore((s) => s.setPhase)
+  const detectHazard = useSimulationStore((s) => s.detectHazard)
+  const detectedHazards = useSimulationStore((s) => s.detectedHazards)
+  const makeDecision = useSimulationStore((s) => s.makeDecision)
   const addEvent = useSimulationStore((s) => s.addEvent)
-  const setScore = useSimulationStore((s) => s.setScore)
 
-  // Start at X = -7 (safe concrete platform), looking towards +X (yaw = -Math.PI / 2)
-  const [playerPos, setPlayerPos] = useState<[number, number, number]>([-7, 0, 0])
-  const [yaw, setYaw] = useState(-Math.PI / 2)
-  const [pitch, setPitch] = useState(-0.1)
+  const audio = useSimAudio()
+  const { after, clearAll } = useSceneTimers()
+  const { toasts, push } = useToasts()
+  const { results, record, reset: resetResults } = useStepResults()
 
-  // Safety checklist
-  const [isTiedOff, setIsTiedOff] = useState(false)
-  const [plankInspected, setPlankInspected] = useState(false)
-  const [coworkerWarned, setCoworkerWarned] = useState(false)
-  const [guardrailRepaired, setGuardrailRepaired] = useState(false)
-  const [plankTipped, setPlankTipped] = useState(false)
+  const player = useRef<PlayerState>(createPlayer(START, -Math.PI / 2, -0.05))
+  const plank = useRef<{ mode: 'loose' | 'tipped' | 'secured'; t: number }>({ mode: 'loose', t: 0 })
 
-  // Fall physics state
-  const [isFalling, setIsFalling] = useState(false)
-  const [fallY, setFallY] = useState(1.7)
-  const [fallVelocity, setFallVelocity] = useState(0)
-  const [fallRoll, setFallRoll] = useState(0)
-  const [fallReason, setFallReason] = useState('')
+  const [stage, setStage] = useState<Stage>('briefing')
+  const [step, setStep] = useState<StepId>('tieoff')
+  const [hazardOpen, setHazardOpen] = useState<HazardIntel | null>(null)
+  const [choice, setChoice] = useState<DecisionOption | null>(null)
+  const [tiedOff, setTiedOff] = useState(false)
+  const [plankSafe, setPlankSafe] = useState(false)
+  const [coworker, setCoworker] = useState<'unclipped' | 'safe' | 'startled' | 'falling'>('unclipped')
+  const [railInstalled, setRailInstalled] = useState(false)
+  const [tape, setTape] = useState(false)
+  const [danger, setDanger] = useState(false)
+  const [flash, setFlash] = useState<{ key: number; color: string } | null>(null)
+  const [letterbox, setLetterbox] = useState(false)
+  const [blackout, setBlackout] = useState(0)
+  const [caption, setCaption] = useState<string | null>(null)
+  const [soundOn, setSoundOn] = useState(true)
+  const [hintVisible, setHintVisible] = useState(true)
+  const firstTry = useRef<Record<string, boolean>>({})
+  const stageRef = useRef<Stage>('briefing')
+  const stepRef = useRef<StepId>('tieoff')
+  const choiceRef = useRef<DecisionOption | null>(null)
+  useEffect(() => {
+    stageRef.current = stage
+    stepRef.current = step
+    choiceRef.current = choice
+  }, [stage, step, choice])
+  useEffect(() => {
+    audio.setEnabled(soundOn)
+  }, [audio, soundOn])
 
-  // Modals & UI
-  const [activeModal, setActiveModal] = useState<'harness' | 'plank' | 'coworker' | 'guardrail' | null>(null)
-  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null)
-  const [feedbackType, setFeedbackType] = useState<'success' | 'error' | 'info'>('info')
+  const doFlash = (color: string) => setFlash({ key: Date.now(), color })
+  const decisionIndex = STEPS.findIndex((s) => s.id === step) + 1
 
-  const [soundEnabled, setSoundEnabled] = useState(true)
-  const [isDragging, setIsDragging] = useState(false)
-  const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 })
-
-  // Trigger Fall Down Sequence
-  const triggerFall = (reason: string) => {
-    if (isFalling) return
-    setIsFalling(true)
-    setFallReason(reason)
-    setFallVelocity(1.0)
-    soundEngine.playWindRush()
-    soundEngine.playWrongBuzzer()
-    addEvent('wrong_action', `Fall from height: ${reason}`)
-    setFeedbackMessage(`💀 FATAL FALL FROM 50 METERS: ${reason}`)
-    setFeedbackType('error')
+  // ── Start ──
+  const begin = () => {
+    audio.unlock()
+    audio.startLoop('wind', 0.7)
+    const p = player.current
+    p.canWalk = true
+    p.speed = 1.8
+    setStage('walk')
+    setPhase('simulation_active')
+    addEvent('scenario_started', 'construction-fall')
   }
 
-  // Free-fall frame physics loop
-  useEffect(() => {
-    if (!isFalling) return
-    let animId: number
-    let currentY = fallY
-    let currentV = fallVelocity
-    let currentRoll = fallRoll
-
-    const fallStep = () => {
-      currentV += 0.9
-      currentY -= currentV * 0.055
-      currentRoll += 0.09
-
-      if (currentY <= -48) {
-        currentY = -48
-        soundEngine.playGroundImpact()
-      } else {
-        animId = requestAnimationFrame(fallStep)
-      }
-
-      setFallY(currentY)
-      setFallVelocity(currentV)
-      setFallRoll(currentRoll)
+  // Walk triggers: stop the trainee at each hazard
+  const fired = useRef<Set<string>>(new Set())
+  const onTick = (s: PlayerState) => {
+    if (stageRef.current !== 'walk') return
+    const st = stepRef.current
+    if (s.pos.x >= STOPS[st] - 0.3 && !fired.current.has(st)) {
+      fired.current.add(st)
+      reachStop(st)
     }
+  }
 
-    animId = requestAnimationFrame(fallStep)
-    return () => cancelAnimationFrame(animId)
-  }, [isFalling, fallY, fallVelocity, fallRoll])
+  const reachStop = (st: StepId) => {
+    const p = player.current
+    p.canWalk = false
+    p.autoWalk = null
+    p.vel.set(0, 0, 0)
+    audio.click()
+    if (st === 'tieoff') {
+      p.focus = new THREE.Vector3(0, LEVEL + 0.4, 0)
+      p.focusRate = 2.5
+      after(900, () => openDecision('tieoff'))
+    } else if (st === 'plank') {
+      p.focus = new THREE.Vector3(1.2, LEVEL - 0.1, 0)
+      p.focusRate = 3
+      audio.creak()
+      setCaption('The next plank shifts under the edge of your boot…')
+      after(1500, () => {
+        setCaption(null)
+        showHazard('plank')
+      })
+    } else {
+      p.focus = COWORKER_POS.clone().setY(LEVEL + 1.3)
+      p.focusRate = 2.5
+      after(900, () => showHazard('coworker'))
+    }
+  }
 
-  // Fixed Precise First-Person Movement Math
-  const movePlayer = (fwd: number, strafe: number) => {
-    if (isFalling) return
-    const speed = 0.45
+  const showHazard = (which: 'plank' | 'coworker' | 'edge') => {
+    detectHazard(HAZARDS[which].id)
+    audio.notify()
+    setHazardOpen(HAZARDS[which])
+    setStage('hazard')
+  }
 
-    // In Three.js with Euler(pitch, yaw, 0, 'YXZ'):
-    // Forward direction on XZ plane:
-    const fwdX = -Math.sin(yaw)
-    const fwdZ = -Math.cos(yaw)
-    // Right direction on XZ plane:
-    const rightX = Math.cos(yaw)
-    const rightZ = -Math.sin(yaw)
+  const acknowledgeHazard = () => {
+    setHazardOpen(null)
+    openDecision(stepRef.current)
+  }
 
-    const dx = (fwdX * fwd + rightX * strafe) * speed
-    const dz = (fwdZ * fwd + rightZ * strafe) * speed
+  const openDecision = (s: StepId) => {
+    setStep(s)
+    setPhase('decision_point')
+    setStage('decide')
+  }
 
-    setPlayerPos(([px, py, pz]) => {
-      let nx = px + dx
-      let nz = pz + dz
+  const autoWalk = () => {
+    const p = player.current
+    const st = stepRef.current
+    p.autoWalk = { target: new THREE.Vector3(STOPS[st] + 0.2, LEVEL, 0), speed: 1.6 }
+  }
 
-      // On narrow girder (X between -5.5 and +6.5): Width Z is [-0.3, 0.3]
-      if (nx > -5.5 && nx < 6.5) {
-        if (Math.abs(nz) > 0.35) {
-          if (!isTiedOff) {
-            triggerFall('Stepped off narrow steel girder without 100% continuous tie-off!')
-          } else {
-            // Harness catches you!
-            nz = Math.sign(nz) * 0.25
-            soundEngine.playCarabinerSnap()
-            setFeedbackMessage('⚠️ Slipped off beam edge, but arrested safely by 100% dual lanyard tie-off!')
-            setFeedbackType('success')
-          }
+  // ── Fall scripts ──
+  const freeFall = (onGround: () => void) => {
+    const p = player.current
+    const start = p.pos.clone()
+    let v = 0
+    let y = p.pos.y + p.eye
+    let t = 0
+    let landed = false
+    audio.whooshSlow()
+    p.autoWalk = null
+    p.script = (s, dt, camera) => {
+      t += dt
+      if (!landed) {
+        v += 9.81 * dt
+        y -= v * dt
+        if (y <= 0.35) {
+          y = 0.35
+          landed = true
+          audio.impact(true)
+          s.trauma = 1
+          onGround()
         }
       }
+      const tumble = Math.min(1, t / 1.2)
+      camera.position.set(start.x, y, start.z + (s.pos.z >= 0 ? 1 : -1) * Math.min(1.2, t * 0.9))
+      camera.quaternion.setFromEuler(new THREE.Euler(THREE.MathUtils.lerp(s.pitch, 1.1, tumble), s.yaw, THREE.MathUtils.lerp(0, 0.7, tumble), 'YXZ'))
+      return true
+    }
+  }
 
-      // Stepping onto unpinned cantilever board at X = 2.4
-      if (nx > 1.8 && nx < 3.2 && !plankInspected) {
-        setPlankTipped(true)
-        soundEngine.playPlankCreak()
-        if (!isTiedOff) {
-          triggerFall('Stepped on loose cantilever scaffold board! Board flipped over 50m drop!')
+  const arrestedFall = (side: number, then: () => void) => {
+    const p = player.current
+    const start = p.pos.clone()
+    const eye0 = p.eye
+    let t = 0
+    let snapped = false
+    audio.whooshSlow()
+    p.autoWalk = null
+    p.script = (s, dt, camera) => {
+      t += dt
+      // Free fall ~1.8 m, then shock absorber deploys and you bounce/swing
+      let drop: number
+      if (t < 0.6) drop = 0.5 * 9.81 * t * t
+      else {
+        if (!snapped) {
+          snapped = true
+          audio.ropeSnap()
+          s.trauma = 0.9
+          then()
+        }
+        const k = t - 0.6
+        drop = 2.4 + Math.sin(k * 6) * 0.35 * Math.exp(-k * 1.6)
+      }
+      const swing = t > 0.6 ? Math.sin((t - 0.6) * 2.2) * 0.35 * Math.exp(-(t - 0.6) * 0.5) : 0
+      camera.position.set(start.x + swing * 0.4, start.y + eye0 - Math.min(drop, 2.6), start.z + side * Math.min(0.55, t * 1.2))
+      camera.quaternion.setFromEuler(new THREE.Euler(THREE.MathUtils.lerp(s.pitch, -0.55, Math.min(1, t * 1.5)), s.yaw + swing * 0.3, swing * 0.4 + side * 0.15, 'YXZ'))
+      return true
+    }
+  }
+
+  // ── Decisions ──
+  const choose = (o: DecisionOption) => {
+    const s = stepRef.current
+    setChoice(o)
+    if (firstTry.current[s] === undefined) firstTry.current[s] = o.verdict === 'correct'
+    record(s, o.verdict === 'correct')
+    addEvent(o.verdict === 'correct' ? 'correct_action' : 'wrong_action', `fall-${s}-${o.id}`)
+    setStage('playout')
+    setLetterbox(true)
+    const p = player.current
+    p.focus = null
+    p.canLook = false
+    if (s === 'tieoff') playTieoff(o.id)
+    else if (s === 'plank') playPlank(o.id)
+    else if (s === 'coworker') playCoworker(o.id)
+    else playGuardrail(o.id)
+  }
+
+  const playTieoff = (id: string) => {
+    const p = player.current
+    if (id === 'twin') {
+      p.focus = new THREE.Vector3(-5, LIFELINE_Y, 0.36)
+      p.focusRate = 3
+      setCaption('Webbing, stitching, D-ring, hooks — all good. Clip… clip.')
+      after(1200, () => audio.carabiner())
+      after(1900, () => {
+        audio.carabiner()
+        setTiedOff(true)
+      })
+      after(3300, finishPlayout)
+    } else {
+      p.autoWalk = { target: new THREE.Vector3(id === 'none' ? -2.6 : -0.25, LEVEL, 0), speed: 1.3 }
+      setCaption(id === 'none' ? 'You step out onto the planks, unclipped…' : 'One hook on the lifeline. At the middle post you unclip to pass it…')
+      if (id === 'single') {
+        setTiedOff(true)
+      }
+      after(id === 'none' ? 2600 : 4300, () => {
+        audio.startLoop('wind', 1.4)
+        p.trauma = 0.6
+        setDanger(true)
+        if (id === 'none') {
+          setCaption('A gust hits you — your boot slides off the plank edge!')
+          freeFall(() => {
+            doFlash('rgba(0,0,0,0.9)')
+            after(400, () => setBlackout(1))
+            after(1600, finishPlayout)
+          })
         } else {
-          setFeedbackMessage('⚠️ Cantilever board flipped! Saved from falling by safety harness!')
-          setFeedbackType('error')
+          setTiedOff(false)
+          setCaption('A gust hits you while you\'re unclipped — you lurch towards the edge and grab the post.')
+          p.roll = -0.35
+          p.eyeTarget = 1.2
+          audio.heartbeat(3)
+          after(2600, finishPlayout)
         }
-      }
-
-      // Stepping into unbarricaded eastern perimeter edge (X > 12)
-      if (nx > 12.5 && !guardrailRepaired && !isTiedOff) {
-        triggerFall('Walked off unguarded eastern perimeter edge at 50 meters elevation!')
-      }
-
-      // Clamp within world limits
-      nx = Math.max(-11.5, Math.min(12.8, nx))
-      nz = Math.max(-3.0, Math.min(3.0, nz))
-
-      return [nx, py, nz]
-    })
+      })
+      after(id === 'none' ? 3000 : 4800, () => audio.setLoopVolume('wind', 0.7))
+    }
   }
 
-  // Keyboard navigation
+  const playPlank = (id: string) => {
+    const p = player.current
+    if (id === 'secure') {
+      p.focus = new THREE.Vector3(1.5, LEVEL, 0)
+      p.focusRate = 3
+      p.eyeTarget = 0.9
+      setCaption('Kneeling, still clipped in, you slide the plank back onto both bearers…')
+      after(900, () => {
+        plank.current = { mode: 'secured', t: 0 }
+        audio.creak()
+      })
+      after(2300, () => {
+        audio.click()
+        setPlankSafe(true)
+        setCaption('Clamps on. You radio the supervisor to have the scaffold re-inspected.')
+      })
+      after(4300, () => {
+        p.eyeTarget = 1.65
+        finishPlayout()
+      })
+    } else if (id === 'quick') {
+      p.autoWalk = { target: new THREE.Vector3(0.9, LEVEL, 0), speed: 1.6 }
+      after(500, () => {
+        plank.current = { mode: 'tipped', t: 0 }
+        audio.creak()
+        doFlash('rgba(0,0,0,0.6)')
+        setDanger(true)
+        setCaption('The plank see-saws — and drops away under you!')
+        arrestedFall(0, () => {
+          setCaption('Your lanyard catches you. You\'re hanging below the walkway, 6 m above the ground.')
+          audio.heartbeat(3)
+        })
+      })
+      after(5200, finishPlayout)
+    } else {
+      p.autoWalk = { target: new THREE.Vector3(0.4, LEVEL, -0.05), speed: 1.0 }
+      setCaption('You step onto the narrow top flange of the beam…')
+      after(1500, () => {
+        audio.creak()
+        p.trauma = 0.5
+        setDanger(true)
+        setCaption('Your boot slides off the dusty flange!')
+        arrestedFall(-1, () => {
+          setCaption('Your lanyard arrests the fall — you\'re left hanging beside the beam.')
+          audio.heartbeat(3)
+        })
+      })
+      after(6200, finishPlayout)
+    }
+  }
+
+  const playCoworker = (id: string) => {
+    const p = player.current
+    p.focus = COWORKER_POS.clone().setY(LEVEL + 1.3)
+    p.focusRate = 3
+    if (id === 'stop') {
+      setCaption('"Stop! Step back from the edge and clip in before you finish that."')
+      after(1400, () => setCoworker('safe'))
+      after(3200, () => {
+        audio.carabiner()
+        setCaption('He steps back and clips both hooks to the column anchor. "Thanks — I should have."')
+      })
+      after(5600, finishPlayout)
+    } else if (id === 'grab') {
+      p.autoWalk = { target: new THREE.Vector3(10.4, LEVEL, 1.3), speed: 2.8 }
+      setCaption('You rush across the bay towards him…')
+      after(1400, () => {
+        setCoworker('startled')
+        p.trauma = 0.6
+        setDanger(true)
+        audio.heartbeat(2)
+        setCaption('He jerks round in surprise and staggers at the edge — you both nearly go over.')
+      })
+      after(4800, finishPlayout)
+    } else {
+      setCaption('You leave him to it and turn back to your own work…')
+      after(2000, () => {
+        setCoworker('falling')
+        audio.creak()
+        setDanger(true)
+        setCaption('The bolt frees suddenly. He loses his balance at the open edge.')
+      })
+      after(3200, () => audio.impact(false))
+      after(3600, () => setBlackout(0.9))
+      after(5000, finishPlayout)
+    }
+  }
+
+  const playGuardrail = (id: string) => {
+    const p = player.current
+    p.focus = new THREE.Vector3(EDGE_X, LEVEL + 0.6, 0)
+    p.focusRate = 3
+    if (id === 'install') {
+      setCaption('Tied off, you fit the posts, top rail, mid-rail and toe board.')
+      after(1200, () => {
+        setRailInstalled(true)
+        audio.click()
+      })
+      after(2600, () => {
+        audio.success()
+        setCaption('Edge protected. You report the missing guardrail to the supervisor.')
+      })
+      after(4800, finishPlayout)
+    } else if (id === 'tape') {
+      setTape(true)
+      setCaption('The tape flutters across the stub posts…')
+      after(2400, () => {
+        setDanger(true)
+        p.trauma = 0.3
+        setCaption('…a labourer carrying sheets backs straight through it and stops inches from the edge.')
+        setTape(false)
+      })
+      after(5200, finishPlayout)
+    } else {
+      setCaption('You stay on the inside of the bay and carry on.')
+      after(2200, () => {
+        setDanger(true)
+        setCaption('The next crew up doesn\'t know the edge is open.')
+      })
+      after(4600, finishPlayout)
+    }
+  }
+
+  const finishPlayout = () => {
+    setLetterbox(false)
+    setCaption(null)
+    const correct = choiceRef.current?.verdict === 'correct'
+    if (correct) audio.success()
+    else audio.error()
+    setPhase(correct ? 'outcome_correct' : 'outcome_incorrect')
+    setStage('explain')
+  }
+
+  // Restore the trainee to the stop point of the current step
+  const resetToStop = (st: StepId) => {
+    const p = player.current
+    p.script = null
+    p.autoWalk = null
+    p.vel.set(0, 0, 0)
+    p.pos.set(STOPS[st] - (st === 'coworker' || st === 'guardrail' ? 0 : 0.05), LEVEL, 0)
+    p.yaw = -Math.PI / 2
+    p.pitch = -0.1
+    p.roll = 0
+    p.eye = p.eyeTarget = 1.65
+    p.trauma = 0
+    p.canLook = true
+  }
+
+  const retry = () => {
+    clearAll()
+    const st = stepRef.current
+    resetToStop(st)
+    if (st === 'tieoff') setTiedOff(false)
+    if (st === 'plank') plank.current = { mode: 'loose', t: 0 }
+    if (st === 'coworker') setCoworker('unclipped')
+    if (st === 'guardrail') setTape(false)
+    setDanger(false)
+    setBlackout(0)
+    setChoice(null)
+    openDecision(st)
+  }
+
+  const nextAfterCorrect = () => {
+    const st = stepRef.current
+    setChoice(null)
+    setDanger(false)
+    const p = player.current
+    p.canLook = true
+    p.focus = null
+    if (st === 'tieoff') {
+      setStep('plank')
+      p.canWalk = true
+      setStage('walk')
+      setPhase('simulation_active')
+      push('Connected. Walk along the planks — stay in the middle.', 'ok')
+    } else if (st === 'plank') {
+      setStep('coworker')
+      p.canWalk = true
+      setStage('walk')
+      setPhase('simulation_active')
+      push('Plank secured. Continue to the east bay.', 'ok')
+    } else if (st === 'coworker') {
+      setStep('guardrail')
+      p.focus = new THREE.Vector3(EDGE_X, LEVEL + 0.4, -1)
+      after(700, () => showHazard('edge'))
+      setStage('playout')
+    } else {
+      setStage('debrief')
+    }
+  }
+
+  const finish = () => {
+    makeDecision(Object.values(firstTry.current).every(Boolean))
+    audio.stopAllLoops()
+    setPhase('positive_video')
+  }
+
+  const replay = () => {
+    clearAll()
+    fired.current = new Set()
+    firstTry.current = {}
+    Object.assign(player.current, createPlayer(START, -Math.PI / 2, -0.05))
+    plank.current = { mode: 'loose', t: 0 }
+    resetResults()
+    setTiedOff(false)
+    setPlankSafe(false)
+    setCoworker('unclipped')
+    setRailInstalled(false)
+    setTape(false)
+    setDanger(false)
+    setBlackout(0)
+    setChoice(null)
+    setStep('tieoff')
+    setStage('briefing')
+    setPhase('simulation_active')
+  }
+
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (isFalling) return
-      if (e.key === 'w' || e.key === 'ArrowUp') movePlayer(1, 0)
-      if (e.key === 's' || e.key === 'ArrowDown') movePlayer(-1, 0)
-      if (e.key === 'd' || e.key === 'ArrowRight') movePlayer(0, 1)
-      if (e.key === 'a' || e.key === 'ArrowLeft') movePlayer(0, -1)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === 'KeyE' && stageRef.current === 'walk') autoWalk()
     }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [yaw, isTiedOff, plankInspected, guardrailRepaired, isFalling])
-
-  // Mouse Look (Dragging)
-  const handleMouseDown = (e: React.MouseEvent) => {
-    setIsDragging(true)
-    setLastMousePos({ x: e.clientX, y: e.clientY })
+  const constrain = (next: THREE.Vector3) => {
+    const st = stepRef.current
+    // While walking freely you can't pass the current hazard stop
+    if (stageRef.current === 'walk') next.x = Math.min(next.x, STOPS[st])
+    next.x = Math.max(next.x, -11.6)
+    if (next.x > -6.05 && next.x < 6.05) next.z = THREE.MathUtils.clamp(next.z, -WALK_HALF + 0.12, WALK_HALF - 0.12)
+    else next.z = THREE.MathUtils.clamp(next.z, -2.6, 2.6)
+    next.y = LEVEL
   }
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || isFalling) return
-    const dx = e.clientX - lastMousePos.x
-    const dy = e.clientY - lastMousePos.y
-    setLastMousePos({ x: e.clientX, y: e.clientY })
-
-    // Non-inverted standard camera controls:
-    // Drag right -> turn right (yaw decreases)
-    // Drag left -> turn left (yaw increases)
-    // Drag up -> look up (pitch increases)
-    // Drag down -> look down (pitch decreases)
-    setYaw((y) => y - dx * 0.0045)
-    setPitch((p) => Math.max(-1.3, Math.min(1.3, p - dy * 0.0045)))
-  }
-
-  const handleMouseUp = () => setIsDragging(false)
-
-  // Decision Handlers
-  const handleHarnessDecision = (correct: boolean) => {
-    if (correct) {
-      setIsTiedOff(true)
-      soundEngine.playCarabinerSnap()
-      soundEngine.playSuccessChime()
-      addEvent('correct_action', '100% Continuous Dual-Lanyard Leapfrog Tie-Off Connected')
-      setFeedbackMessage('✅ 100% Dual Lanyard Tie-off locked to overhead 5,000-lb static lifeline!')
-      setFeedbackType('success')
-    } else {
-      triggerFall('Bypassed 100% tie-off and attempted walking narrow girder unclipped!')
-    }
-    setActiveModal(null)
-  }
-
-  const handlePlankDecision = (correct: boolean) => {
-    if (correct) {
-      setPlankInspected(true)
-      setPlankTipped(false)
-      soundEngine.playSuccessChime()
-      addEvent('hazard_detected', 'Unsecured cantilever board tagged out and cleated')
-      setFeedbackMessage('✅ Loose cantilever board secured with cleats and tagged safe for crossing.')
-      setFeedbackType('success')
-    } else {
-      setPlankTipped(true)
-      soundEngine.playPlankCreak()
-      if (!isTiedOff) {
-        triggerFall('Stepped on unsecured cantilever board! Board tipped into 50m abyss!')
-      }
-    }
-    setActiveModal(null)
-  }
-
-  const handleCoworkerDecision = (correct: boolean) => {
-    if (correct) {
-      setCoworkerWarned(true)
-      soundEngine.playSuccessChime()
-      addEvent('correct_action', 'Stop Work Authority applied: Coworker clipped to static lifeline')
-      setFeedbackMessage('✅ Stop Work Authority executed! Coworker stepped back and clipped lanyards.')
-      setFeedbackType('success')
-    } else {
-      soundEngine.playWrongBuzzer()
-      addEvent('wrong_action', 'Ignored coworker unclipped at 50m open edge')
-      setFeedbackMessage('❌ OSHA VIOLATION: All workers are mandated to halt life-safety violations!')
-      setFeedbackType('error')
-    }
-    setActiveModal(null)
-  }
-
-  const handleGuardrailDecision = (correct: boolean) => {
-    if (correct) {
-      setGuardrailRepaired(true)
-      soundEngine.playSuccessChime()
-      addEvent('hazard_detected', 'OSHA 1926.502 top-rail, mid-rail, and toe-board barrier installed')
-      setFeedbackMessage('✅ 1.07m top rail, mid rail, and toe board installed along open perimeter.')
-      setFeedbackType('success')
-    } else {
-      triggerFall('Left open perimeter unguarded and misstepped into the open drop!')
-    }
-    setActiveModal(null)
-  }
-
-  const allResolved = isTiedOff && plankInspected && coworkerWarned && guardrailRepaired && playerPos[0] > 6.5
+  const hazardsFound = detectedHazards.filter((h) => h === HAZARDS.plank.id || h === HAZARDS.coworker.id || h === HAZARDS.edge.id).length
+  const walkPrompt =
+    step === 'tieoff'
+      ? 'Walk to the end of the deck where the scaffold walkway starts'
+      : step === 'plank'
+        ? 'Cross the walkway towards the east bay'
+        : 'Continue onto the east bay where your coworker is working'
 
   return (
-    <div
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        background: '#0284c7',
-        overflow: 'hidden',
-        userSelect: 'none',
-        cursor: isDragging ? 'grabbing' : 'grab',
-      }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-    >
-      {/* Red Falling Trauma Blur Overlay */}
-      {isFalling && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            zIndex: 35,
-            pointerEvents: 'none',
-            background: 'radial-gradient(circle, rgba(239,68,68,0.4) 0%, rgba(185,28,28,0.95) 100%)',
-            animation: 'shake 0.1s infinite',
-          }}
-        />
-      )}
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#9cc6e8', userSelect: 'none' }}>
+      <SimCanvas background="#a9cbe6" fov={70}>
+        <Sky distance={450} sunPosition={[60, 40, 30]} turbidity={6} rayleigh={1.2} mieCoefficient={0.006} mieDirectionalG={0.85} />
+        <fog attach="fog" args={['#bcd3e6', 45, 180]} />
+        <hemisphereLight args={['#dbeafe', '#8a7558', 1.15]} />
+        <directionalLight
+          position={[30, 40, 18]}
+          intensity={2.2}
+          color="#fff4e0"
+          castShadow
+          shadow-mapSize={[1024, 1024]}
+          shadow-bias={-0.0004}
+          shadow-normalBias={0.04}
+        >
+          <orthographicCamera attach="shadow-camera" args={[-18, 18, 14, -14, 1, 90]} />
+        </directionalLight>
 
-      {/* 3D WebGL Canvas */}
-      <Canvas camera={{ position: [-7, 1.7, 0], fov: 75 }} shadows style={{ width: '100%', height: '100%' }}>
+        <PlayerRig playerRef={player} constrain={constrain} onTick={onTick} onFirstInput={() => setHintVisible(false)} />
+        <SiteGround />
+        <SteelFrame />
+        <LoosePlank stateRef={plank} />
+        <Clamps visible={plankSafe} />
+        <EastGuardrail installed={railInstalled} />
+        <CautionTape visible={tape} />
+        <PlayerLanyard playerRef={player} connected={tiedOff} />
         <Suspense fallback={null}>
-          <FirstPersonFallingCameraRig
-            position={playerPos}
-            yaw={yaw}
-            pitch={pitch}
-            isFalling={isFalling}
-            fallY={fallY}
-            fallRoll={fallRoll}
-          />
-
-          {/* High Altitude Sky & Sunlight */}
-          <ambientLight intensity={0.7} />
-          <directionalLight position={[20, 50, 20]} intensity={1.5} castShadow />
-          <hemisphereLight groundColor="#334155" color="#bae6fd" intensity={0.6} />
-
-          {/* Sky dome representation */}
-          <mesh position={[0, 0, 0]}>
-            <sphereGeometry args={[140, 16, 16]} />
-            <meshBasicMaterial color="#38bdf8" side={THREE.BackSide} />
-          </mesh>
-
-          {/* 3D High Altitude Environment */}
-          <HighAltitudeSkyscraperScene
-            plankTipped={plankTipped}
-            isTiedOff={isTiedOff}
-            guardrailRepaired={guardrailRepaired}
-          />
-          <CoworkerModelAtEdge isWarned={coworkerWarned} />
-
-          {/* 3D Hotspots */}
-          {!isFalling && (
-            <group>
-              <Html position={[-6, 2.2, 0]} center distanceFactor={12}>
-                <button
-                  onClick={() => setActiveModal('harness')}
-                  style={{
-                    background: isTiedOff ? '#15803d' : '#ea580c',
-                    color: '#fff',
-                    border: '2px solid #fff',
-                    borderRadius: 20,
-                    padding: '6px 14px',
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
-                  }}
-                >
-                  <Link size={14} />
-                  {isTiedOff ? '✓ 100% Dual Lanyard Locked' : 'Clip Dual Lanyard to Overhead Lifeline'}
-                </button>
-              </Html>
-
-              <Html position={[2.4, 1.0, 0]} center distanceFactor={12}>
-                <button
-                  onClick={() => setActiveModal('plank')}
-                  style={{
-                    background: plankInspected ? '#15803d' : '#dc2626',
-                    color: '#fff',
-                    border: '2px solid #fff',
-                    borderRadius: 20,
-                    padding: '6px 14px',
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
-                  }}
-                >
-                  <AlertTriangle size={14} />
-                  {plankInspected ? '✓ Cantilever Board Cleated' : 'Inspect Unpinned Cantilever Board'}
-                </button>
-              </Html>
-
-              <Html position={[8.0, 2.8, -1.2]} center distanceFactor={12}>
-                <button
-                  onClick={() => setActiveModal('coworker')}
-                  style={{
-                    background: coworkerWarned ? '#15803d' : '#dc2626',
-                    color: '#fff',
-                    border: '2px solid #fff',
-                    borderRadius: 20,
-                    padding: '6px 14px',
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
-                  }}
-                >
-                  <UserCheck size={14} />
-                  {coworkerWarned ? '✓ Coworker Secured' : 'Issue Stop Work Directive'}
-                </button>
-              </Html>
-
-              <Html position={[12.2, 1.8, 0]} center distanceFactor={12}>
-                <button
-                  onClick={() => setActiveModal('guardrail')}
-                  style={{
-                    background: guardrailRepaired ? '#15803d' : '#ea580c',
-                    color: '#fff',
-                    border: '2px solid #fff',
-                    borderRadius: 20,
-                    padding: '6px 14px',
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
-                  }}
-                >
-                  <ShieldAlert size={14} />
-                  {guardrailRepaired ? '✓ Perimeter Guardrail Installed' : 'Install Missing Guardrail Barrier'}
-                </button>
-              </Html>
-            </group>
-          )}
+          <Coworker mode={coworker} />
         </Suspense>
-      </Canvas>
+        <SignBoard />
 
-      {/* ── Top HUD ── */}
-      <SimulationHUD scenario={scenario} />
+        <PulseRing position={[STOPS[step], LEVEL, 0]} visible={stage === 'walk'} radius={0.45} />
+        {stage === 'walk' && step === 'tieoff' && (
+          <Html position={[-6.05, LIFELINE_Y - 0.2, 0.4]} center zIndexRange={[20, 0]}>
+            <WorldTag label="Lifeline anchor" sub="Tie-off point" tone="target" />
+          </Html>
+        )}
+      </SimCanvas>
 
-      {/* Elevation Height Badge */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 16,
-          right: 16,
-          zIndex: 30,
-          background: 'rgba(239, 68, 68, 0.2)',
-          border: '1px solid rgba(239, 68, 68, 0.6)',
-          borderRadius: 12,
-          padding: '10px 16px',
-          color: '#fff',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          backdropFilter: 'blur(8px)',
-        }}
-      >
-        <AlertOctagon size={20} color="#ef4444" />
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: '#f87171' }}>
-            ELEVATION: {isFalling ? `${Math.max(0, Math.round(50 + fallY))} METERS (FALLING!)` : '50 METERS (165 FT)'}
-          </div>
-          <div style={{ fontSize: 10, color: '#fca5a5' }}>
-            OSHA 1926 Subpart M • 100% Continuous Tie-Off Required
-          </div>
-        </div>
-      </div>
+      <ScreenFX danger={danger} flash={flash} letterbox={letterbox} blackout={blackout} caption={caption} />
 
-      {/* ── Virtual On-Screen Direction D-Pad (Guaranteed Intuitive Movement) ── */}
-      {!isFalling && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 24,
-            right: 24,
-            zIndex: 30,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 4,
-            background: 'rgba(15, 23, 42, 0.85)',
-            padding: '8px',
-            borderRadius: 16,
-            border: '1px solid #334155',
-            backdropFilter: 'blur(10px)',
-          }}
-        >
-          <button
-            onClick={() => movePlayer(1, 0)}
-            style={{
-              width: 44,
-              height: 40,
-              background: '#334155',
-              border: '1px solid #475569',
-              borderRadius: 8,
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-            }}
-            title="Step Forward (W)"
-          >
-            <ArrowUp size={18} />
-          </button>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button
-              onClick={() => movePlayer(0, -1)}
-              style={{
-                width: 44,
-                height: 40,
-                background: '#334155',
-                border: '1px solid #475569',
-                borderRadius: 8,
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-              }}
-              title="Step Left (A)"
-            >
-              <ArrowLeft size={18} />
-            </button>
-            <button
-              onClick={() => movePlayer(-1, 0)}
-              style={{
-                width: 44,
-                height: 40,
-                background: '#334155',
-                border: '1px solid #475569',
-                borderRadius: 8,
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-              }}
-              title="Step Backward (S)"
-            >
-              <ArrowDown size={18} />
-            </button>
-            <button
-              onClick={() => movePlayer(0, 1)}
-              style={{
-                width: 44,
-                height: 40,
-                background: '#334155',
-                border: '1px solid #475569',
-                borderRadius: 8,
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-              }}
-              title="Step Right (D)"
-            >
-              <ArrowRight size={18} />
-            </button>
-          </div>
-        </div>
+      {stage !== 'briefing' && stage !== 'debrief' && (
+        <>
+          <MissionPanel
+            title="Working at height"
+            steps={STEPS}
+            currentId={step}
+            results={results}
+            chips={[
+              { label: 'Height above ground', value: '8.0 m', tone: 'warn' },
+              { label: 'Your tie-off', value: tiedOff ? '100% connected' : 'Not connected', tone: tiedOff ? 'ok' : 'bad' },
+              { label: 'Hazards found', value: `${hazardsFound} / 3`, tone: hazardsFound === 3 ? 'ok' : 'warn' },
+            ]}
+          />
+          <SimToolbar soundOn={soundOn} onToggleSound={() => setSoundOn((v) => !v)} />
+        </>
+      )}
+      <ToastStack toasts={toasts} />
+
+      {stage === 'walk' && (
+        <>
+          <ObjectivePrompt text={walkPrompt} sub="8 m drop on both sides of the walkway" autoWalkLabel="Walk for me" onAutoWalk={autoWalk} />
+          {hintVisible && <ControlsHint />}
+        </>
       )}
 
-      {/* ── Fall Incident Modal ── */}
-      {isFalling && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            zIndex: 60,
-            background: 'rgba(0,0,0,0.88)',
-            backdropFilter: 'blur(16px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-          }}
-        >
-          <div
-            style={{
-              background: '#1e1b4b',
-              border: '2px solid #ef4444',
-              borderRadius: 24,
-              padding: '36px 40px',
-              maxWidth: 540,
-              textAlign: 'center',
-              color: '#fff',
-              boxShadow: '0 25px 60px rgba(239, 68, 68, 0.5)',
-            }}
-          >
-            <div
-              style={{
-                width: 70,
-                height: 70,
-                borderRadius: 35,
-                background: 'rgba(239,68,68,0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 16px',
-              }}
-            >
-              <ArrowDown size={36} color="#ef4444" />
-            </div>
-            <h2 style={{ fontSize: 22, fontWeight: 900, color: '#f87171', marginBottom: 12 }}>
-              FATAL FALL FROM ELEVATION
-            </h2>
-            <p style={{ fontSize: 14, color: '#e2e8f0', lineHeight: 1.6, marginBottom: 24 }}>
-              {fallReason}
-            </p>
-            <button
-              onClick={() => {
-                setIsFalling(false)
-                setFallY(1.7)
-                setFallVelocity(0)
-                setFallRoll(0)
-                setPlayerPos([-7, 0, 0])
-                setPlankTipped(false)
-                setIsTiedOff(false)
-                setPlankInspected(false)
-                setCoworkerWarned(false)
-                setGuardrailRepaired(false)
-                setFeedbackMessage(null)
-              }}
-              style={{
-                background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 12,
-                padding: '12px 28px',
-                fontSize: 14,
-                fontWeight: 800,
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
-              <RotateCcw size={16} />
-              Re-attempt High Girder Walk with 100% Tie-Off
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Scenario Completed Banner ── */}
-      {allResolved && !isFalling && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            zIndex: 50,
-            background: 'rgba(15, 23, 42, 0.95)',
-            backdropFilter: 'blur(16px)',
-            border: '2px solid #22c55e',
-            borderRadius: 24,
-            padding: '32px 40px',
-            maxWidth: 500,
-            textAlign: 'center',
-            color: '#fff',
-            boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
-          }}
-        >
-          <div
-            style={{
-              width: 60,
-              height: 60,
-              borderRadius: 30,
-              background: 'rgba(34, 197, 94, 0.2)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 16px',
-            }}
-          >
-            <Sparkles size={32} color="#22c55e" />
-          </div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#4ade80', marginBottom: 8 }}>
-            High-Altitude Traversal Completed!
-          </h2>
-          <p style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.5, marginBottom: 24 }}>
-            You maintained 100% dual-lanyard continuous tie-off across the 50m narrow girder, cleated the
-            loose cantilever board, intervened with your unclipped coworker, and installed perimeter guardrails.
-          </p>
-          <button
-            onClick={() => {
-              setScore(95)
-              setPhase('positive_video')
-            }}
-            style={{
-              background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 12,
-              padding: '12px 28px',
-              fontSize: 14,
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <span>Proceed to Positive Training Video & Quiz</span>
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      )}
-
-      {/* ── Decision Modals ── */}
-      {activeModal === 'harness' && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            zIndex: 60,
-            background: 'rgba(0,0,0,0.7)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div style={{ background: '#fff', borderRadius: 20, padding: 28, maxWidth: 480, color: '#0f172a' }}>
-            <h3 style={{ fontSize: 17, fontWeight: 800, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Link size={20} color="#ea580c" /> 100% Fall Protection Hook-Up
-            </h3>
-            <p style={{ fontSize: 13, color: '#475569', marginBottom: 20 }}>
-              You are about to step onto the 0.5m wide steel girder at 50 meters elevation. What is your tie-off protocol?
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button
-                onClick={() => handleHarnessDecision(true)}
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 12,
-                  border: '1px solid #bbf7d0',
-                  background: '#f0fdf4',
-                  textAlign: 'left',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  color: '#166534',
-                }}
-              >
-                🔗 <strong>Leapfrog 100% Tie-Off:</strong> Lock dual snap hooks to the overhead static wire rope before taking a step.
-              </button>
-              <button
-                onClick={() => handleHarnessDecision(false)}
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 12,
-                  border: '1px solid #fecaca',
-                  background: '#fef2f2',
-                  textAlign: 'left',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  color: '#991b1b',
-                }}
-              >
-                🚶 <strong>Walk Unclipped:</strong> Rely on balance and clip in only after crossing to the other side.
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeModal === 'plank' && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            zIndex: 60,
-            background: 'rgba(0,0,0,0.7)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div style={{ background: '#fff', borderRadius: 20, padding: 28, maxWidth: 480, color: '#0f172a' }}>
-            <h3 style={{ fontSize: 17, fontWeight: 800, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <AlertTriangle size={20} color="#dc2626" /> Cantilever Board Identified
-            </h3>
-            <p style={{ fontSize: 13, color: '#475569', marginBottom: 20 }}>
-              A wooden board bridges the middle span, but the overhang is unpinned and unsupported over the 50m drop.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button
-                onClick={() => handlePlankDecision(true)}
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 12,
-                  border: '1px solid #bbf7d0',
-                  background: '#f0fdf4',
-                  textAlign: 'left',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  color: '#166534',
-                }}
-              >
-                🛑 <strong>Halt & Secure:</strong> Fasten safety cleats and tag out the board before stepping onto it.
-              </button>
-              <button
-                onClick={() => handlePlankDecision(false)}
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 12,
-                  border: '1px solid #fecaca',
-                  background: '#fef2f2',
-                  textAlign: 'left',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  color: '#991b1b',
-                }}
-              >
-                🏃 <strong>Walk Across Quickly:</strong> Step in the middle of the board without stopping.
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeModal === 'coworker' && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            zIndex: 60,
-            background: 'rgba(0,0,0,0.7)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div style={{ background: '#fff', borderRadius: 20, padding: 28, maxWidth: 480, color: '#0f172a' }}>
-            <h3 style={{ fontSize: 17, fontWeight: 800, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <UserCheck size={20} color="#dc2626" /> Stop Work Authority: Coworker at Edge
-            </h3>
-            <p style={{ fontSize: 13, color: '#475569', marginBottom: 20 }}>
-              Your coworker is reaching for bolts with both lanyards unclipped at 50 meters elevation.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button
-                onClick={() => handleCoworkerDecision(true)}
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 12,
-                  border: '1px solid #bbf7d0',
-                  background: '#f0fdf4',
-                  textAlign: 'left',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  color: '#166534',
-                }}
-              >
-                📣 <strong>Immediate Stop Work Call-Out:</strong> Direct coworker to step away from edge and lock snap hooks.
-              </button>
-              <button
-                onClick={() => handleCoworkerDecision(false)}
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 12,
-                  border: '1px solid #cbd5e1',
-                  background: '#f8fafc',
-                  textAlign: 'left',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                🤫 <strong>Wait Until Shift End:</strong> Avoid distracting him while he works.
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeModal === 'guardrail' && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            zIndex: 60,
-            background: 'rgba(0,0,0,0.7)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div style={{ background: '#fff', borderRadius: 20, padding: 28, maxWidth: 480, color: '#0f172a' }}>
-            <h3 style={{ fontSize: 17, fontWeight: 800, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <ShieldAlert size={20} color="#ea580c" /> Perimeter Edge Guardrail System
-            </h3>
-            <p style={{ fontSize: 13, color: '#475569', marginBottom: 20 }}>
-              The eastern landing platform has an unprotected 50-meter open drop.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button
-                onClick={() => handleGuardrailDecision(true)}
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 12,
-                  border: '1px solid #bbf7d0',
-                  background: '#f0fdf4',
-                  textAlign: 'left',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  color: '#166534',
-                }}
-              >
-                🛡️ <strong>Install OSHA Guardrail:</strong> 1.07m top rail (200 lbs force), 0.53m mid-rail, and 4-inch toe board.
-              </button>
-              <button
-                onClick={() => handleGuardrailDecision(false)}
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 12,
-                  border: '1px solid #fecaca',
-                  background: '#fef2f2',
-                  textAlign: 'left',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  color: '#991b1b',
-                }}
-              >
-                ⚠️ <strong>Tape Only:</strong> String yellow caution tape across the edge.
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Notification Banner ── */}
-      {feedbackMessage && !isFalling && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 80,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 40,
-            background: feedbackType === 'success' ? 'rgba(22, 101, 52, 0.95)' : 'rgba(185, 28, 28, 0.95)',
-            color: '#fff',
-            padding: '12px 24px',
-            borderRadius: 30,
-            border: `1px solid ${feedbackType === 'success' ? '#4ade80' : '#f87171'}`,
-            fontSize: 13,
-            fontWeight: 700,
-            boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-          }}
-        >
-          {feedbackType === 'success' ? <ShieldCheck size={18} color="#4ade80" /> : <AlertOctagon size={18} color="#fca5a5" />}
-          <span>{feedbackMessage}</span>
-          <button
-            onClick={() => setFeedbackMessage(null)}
-            style={{ background: 'transparent', border: 'none', color: '#cbd5e1', cursor: 'pointer', marginLeft: 12, fontWeight: 800 }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* ── Bottom Controls ── */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 20,
-          left: 16,
-          zIndex: 30,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-        }}
-      >
-        <button
-          onClick={() => {
-            const next = !soundEnabled
-            setSoundEnabled(next)
-            soundEngine.enabled = next
-          }}
-          style={{
-            background: 'rgba(15, 23, 42, 0.85)',
-            border: '1px solid #334155',
-            borderRadius: 8,
-            padding: '8px 12px',
-            color: '#fff',
-            fontSize: 12,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            cursor: 'pointer',
-          }}
-        >
-          {soundEnabled ? <Volume2 size={14} color="#f97316" /> : <VolumeX size={14} color="#94a3b8" />}
-          <span>{soundEnabled ? 'Audio Active' : 'Muted'}</span>
-        </button>
-        <div
-          style={{
-            background: 'rgba(15, 23, 42, 0.85)',
-            border: '1px solid #334155',
-            borderRadius: 8,
-            padding: '8px 14px',
-            color: '#94a3b8',
-            fontSize: 11,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          <MousePointer size={12} color="#f97316" />
-          <span>Drag Mouse to Look • WASD or On-Screen D-Pad to Walk</span>
-        </div>
-      </div>
+      <AnimatePresence>
+        {stage === 'briefing' && (
+          <BriefingCard
+            key="brief"
+            eyebrow="Construction · Working at height"
+            title={scenario.title}
+            role="You are a structural ironworker on the 8 m level of a steel frame."
+            situation="Your task is on the east bay, across a scaffold walkway laid along a beam. The frame was inspected this morning, but things change during a shift. Watch where you put your feet — and who's around you."
+            objectives={[
+              'Connect your fall protection before stepping onto the walkway',
+              'Deal with any defect you find on the way across',
+              'Look out for your crew',
+              'Leave the work area safer than you found it',
+            ]}
+            controls={[
+              ['W A S D', 'walk'],
+              ['Drag', 'look around (look down!)'],
+              ['E', 'walk for me'],
+              ['Space', 'pause'],
+            ]}
+            onBegin={begin}
+          />
+        )}
+        {hazardOpen && <HazardCard key={hazardOpen.id} hazard={hazardOpen} onAcknowledge={acknowledgeHazard} />}
+        {stage === 'decide' && <DecisionCard key={`d-${step}`} decision={DECISIONS[step]} index={decisionIndex} total={4} onChoose={choose} />}
+        {stage === 'explain' && choice && (
+          <ExplanationCard
+            key={`e-${step}`}
+            verdict={choice.verdict}
+            explanation={choice.outcome}
+            primaryLabel={choice.verdict === 'correct' ? (step === 'guardrail' ? 'See debrief' : 'Continue') : 'Retry this decision'}
+            onPrimary={choice.verdict === 'correct' ? nextAfterCorrect : retry}
+          />
+        )}
+        {stage === 'debrief' && (
+          <DebriefCard
+            key="debrief"
+            title="Safe at height"
+            summary="You stayed 100% tied off, fixed the unsecured plank instead of working around it, stopped an unsafe act without startling anyone and restored the edge protection — the habits that stop falls, the top killer in construction."
+            steps={STEPS}
+            results={results}
+            hazardsFound={hazardsFound}
+            totalHazards={3}
+            onContinue={finish}
+            onReplay={replay}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
+}
+
+function SignBoard() {
+  const map = useMemo(
+    () => signTexture('fall-sign', ['100% TIE-OFF', 'BEYOND THIS POINT'], { bg: '#1d4ed8', fg: '#ffffff', border: '#ffffff', w: 512, h: 256 }),
+    []
+  )
+  return <Sign map={map} position={[-6.1, LEVEL + 1.55, -1.6]} size={[1.0, 0.5]} rotationY={-Math.PI / 2} />
 }

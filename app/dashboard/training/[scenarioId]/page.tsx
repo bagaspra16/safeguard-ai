@@ -3,6 +3,7 @@
 import { use, useEffect } from 'react'
 import { getScenarioById } from '@/lib/scenarios/data'
 import { useSimulationStore } from '@/lib/simulation/store'
+import type { SimulationPhase } from '@/types'
 import { TrainingExperience } from '@/components/training/TrainingExperience'
 import Link from 'next/link'
 
@@ -17,6 +18,11 @@ export default function TrainingSessionPage({
 
   useEffect(() => {
     reset()
+    // Dev shortcut: ?phase=simulation_active jumps straight to the 3D drill
+    if (process.env.NODE_ENV === 'development') {
+      const phase = new URLSearchParams(window.location.search).get('phase')
+      if (phase) useSimulationStore.getState().setPhase(phase as SimulationPhase)
+    }
   }, [scenarioId, reset])
 
   if (!scenario) {
